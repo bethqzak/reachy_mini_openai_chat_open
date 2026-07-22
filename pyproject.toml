@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reachy-mini-openai-chat-open"
+version = "0.1.0"
+description = "Talk with Reachy Mini using your own OpenAI Realtime API key. Voice conversation with ambient movement, expressive gestures, and camera vision. Open edition: no logging, nothing leaves the robot."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Beth Cusack" }]
+keywords = ["reachy", "reachy-mini", "robot", "openai", "realtime", "voice", "conversation"]
+
+dependencies = [
+    "reachy-mini",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "websockets>=12.0",
+    # <5: OpenCV 5 removed cv2.CascadeClassifier / cv2.data.haarcascades,
+    # which face tracking and face blurring depend on.
+    "opencv-python>=4.8,<5",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy"]
+
+# This is the entry point the Reachy Mini daemon uses to discover the app.
+# Group name MUST be "reachy_mini_apps" (with underscores).
+# The entry point name MUST match the package dir, pip distribution and Space
+# name: the daemon uses it verbatim for pip uninstall, update checks
+# (dist-info lookup) and custom_app_url discovery (site-packages/<name>/main.py).
+[project.entry-points."reachy_mini_apps"]
+reachy_mini_openai_chat_open = "reachy_mini_openai_chat_open.main:OpenAIChatApp"
+
+[tool.setuptools]
+packages = ["reachy_mini_openai_chat_open"]
+
+[tool.setuptools.package-data]
+reachy_mini_openai_chat_open = ["static/*"]

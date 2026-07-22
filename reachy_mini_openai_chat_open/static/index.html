@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reachy Mini · OpenAI Chat (Open) — Settings</title>
+  <!-- The SDK serves this page at "/" but mounts assets under "/static/". -->
+  <link rel="stylesheet" href="static/style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <span class="robot">🤖</span>
+        <div>
+          <h1>Reachy Mini · OpenAI Chat</h1>
+          <div class="sub">Settings &amp; live control</div>
+        </div>
+      </div>
+      <div class="status">
+        <span id="dot" class="dot wait"></span>
+        <span id="statusText">connecting…</span>
+      </div>
+    </header>
+
+    <div id="toast" class="toast"></div>
+
+    <!-- API key -->
+    <section class="card">
+      <h2>OpenAI API key</h2>
+      <p class="hint" id="keyHint">Checking…</p>
+      <div class="row">
+        <input type="password" id="apikey" placeholder="sk-…"
+               autocomplete="off" spellcheck="false" />
+      </div>
+      <button id="saveKey" class="primary">Save key</button>
+    </section>
+
+    <!-- Behaviour -->
+    <section class="card">
+      <h2>Behaviour</h2>
+      <p class="hint">Applies instantly — no reconnect.</p>
+      <label class="row switch">
+        <span>Face tracking <em id="faceNote"></em></span>
+        <input type="checkbox" id="face_tracking" />
+      </label>
+      <label class="row switch">
+        <span>Ambient motion (breathing / idle)</span>
+        <input type="checkbox" id="ambient" />
+      </label>
+      <label class="row switch">
+        <span>Half-duplex <em>(mute mic while talking — fixes echo)</em></span>
+        <input type="checkbox" id="half_duplex" />
+      </label>
+    </section>
+
+    <!-- Voice & personality -->
+    <section class="card">
+      <h2>Voice &amp; personality</h2>
+      <p class="hint">Saving briefly reconnects the session (conversation context resets).</p>
+      <div class="row">
+        <label for="voice">Voice</label>
+        <select id="voice"></select>
+      </div>
+      <div class="row">
+        <label for="model">Model</label>
+        <select id="model">
+          <option value="gpt-realtime">gpt-realtime</option>
+          <option value="gpt-realtime-2">gpt-realtime-2</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="instructions">Personality (system prompt)</label>
+        <textarea id="instructions" rows="6"></textarea>
+      </div>
+      <div class="field">
+        <label for="greeting">Greeting on start</label>
+        <textarea id="greeting" rows="2"></textarea>
+      </div>
+      <button id="save" class="primary">Save &amp; apply</button>
+    </section>
+
+    <!-- Test movement -->
+    <section class="card">
+      <h2>Test movement</h2>
+      <p class="hint">Trigger a gesture right now.</p>
+      <div id="gestures" class="gestures"></div>
+    </section>
+
+    <!-- Transcript -->
+    <section class="card" id="transcriptCard">
+      <div class="card-head">
+        <h2>Live transcript</h2>
+        <button type="button" id="expand" class="icon" title="Expand transcript">⤢</button>
+      </div>
+      <p class="hint">Shown from memory only — nothing is saved to disk or uploaded.</p>
+      <div id="transcript" class="transcript"></div>
+    </section>
+
+    <footer>Reachy Mini · OpenAI Chat (Open) — settings served locally on the robot.</footer>
+  </div>
+  <script src="static/main.js"></script>
+</body>
+</html>
