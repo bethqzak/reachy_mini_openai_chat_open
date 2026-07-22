@@ -81,6 +81,9 @@ def register_routes(app) -> None:
             },
             "status": {
                 "connected": bool(app._runtime.get("connected", False)),
+                # Why the last connection attempt failed (e.g. "OpenAI
+                # rejected the API key (401)"); empty when none.
+                "error": app._runtime.get("last_error") or "",
                 # Never send the key itself to the browser — only a hint.
                 "key_set": bool(cfg.openai_api_key),
                 "key_hint": (cfg.openai_api_key[:7] + "…" + cfg.openai_api_key[-4:]
@@ -146,6 +149,7 @@ def register_routes(app) -> None:
         if not key:
             return JSONResponse({"ok": False, "error": "empty key"}, status_code=400)
         app.cfg.openai_api_key = key
+        app._runtime["last_error"] = None  # fresh attempt, fresh verdict
         app._restart.set()  # reconnect (or first connect) with the new key
         log.info("API key updated from settings page; reconnecting")
         persisted = True

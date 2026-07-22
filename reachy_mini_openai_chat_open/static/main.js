@@ -77,7 +77,7 @@ async function loadState() {
     keyEl.placeholder = st.key_set ? "••••••••••••••••••••" : "sk-…";
   }
 
-  setStatus(st.connected, st.key_set);
+  setStatus(st.connected, st.key_set, st.error);
 }
 
 function setToggle(id, val) {
@@ -85,7 +85,7 @@ function setToggle(id, val) {
   if (el && document.activeElement !== el) el.checked = !!val;
 }
 
-function setStatus(connected, keySet) {
+function setStatus(connected, keySet, error) {
   const dot = $("dot"), txt = $("statusText");
   if (connected === null) {
     // Don't flash the failure message on a single missed poll (e.g. while
@@ -94,8 +94,9 @@ function setStatus(connected, keySet) {
     dot.className = "dot off"; txt.textContent = "settings server only — app not running"; return;
   }
   if (keySet === false) { dot.className = "dot off"; txt.textContent = "waiting for API key"; return; }
-  dot.className = "dot " + (connected ? "on" : "off");
-  txt.textContent = connected ? "connected to OpenAI" : "reconnecting…";
+  if (connected) { dot.className = "dot on"; txt.textContent = "connected to OpenAI"; return; }
+  dot.className = "dot off";
+  txt.textContent = error ? "not connected — " + error : "reconnecting…";
 }
 
 // ---- instant toggles ----

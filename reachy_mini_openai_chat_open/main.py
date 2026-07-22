@@ -91,7 +91,7 @@ class OpenAIChatApp(ReachyMiniApp):
         self.face_tracker = face_tracker
         self.transcript = transcript
         self._restart = threading.Event()
-        self._runtime = {"connected": False, "greeted": False}
+        self._runtime = {"connected": False, "greeted": False, "last_error": None}
 
         # Register the settings-page API routes on self.settings_app.
         try:

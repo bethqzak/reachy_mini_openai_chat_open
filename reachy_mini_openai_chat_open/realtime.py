@@ -43,6 +43,29 @@ _NOISY_EVENTS = _AUDIO_DELTA | {
 }
 
 
+def _connect_error_reason(e: Exception) -> str:
+    """Human-readable reason for a failed websocket handshake."""
+    # websockets v13+: InvalidStatus with .response.status_code;
+    # older versions: InvalidStatusCode with .status_code.
+    status = getattr(e, "status_code", None)
+    if status is None:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+    if status in (401, 403):
+        return f"OpenAI rejected the API key ({status})"
+    if status is not None:
+        return f"OpenAI refused the connection (HTTP {status})"
+    return f"could not reach OpenAI ({e.__class__.__name__})"
+
+
+def _api_error_reason(err: dict) -> str:
+    """Human-readable reason from a Realtime API `error` event."""
+    code = err.get("code") or err.get("type") or ""
+    if code in ("invalid_api_key", "invalid_authentication", "authentication_error"):
+        return "OpenAI rejected the API key (401)"
+    msg = err.get("message") or "OpenAI returned an error"
+    return f"OpenAI rejected the session: {msg}"
+
+
 class OpenAIRealtimeClient:
     def __init__(self, config, mic_reader, speaker, tool_ctx: ToolContext,
                  logger=None, runtime=None, restart_event=None):
@@ -67,12 +90,15 @@ class OpenAIRealtimeClient:
 
         try:
             ws = await self._connect(url, headers)
-        except Exception:
+        except Exception as e:
+            self.runtime["last_error"] = _connect_error_reason(e)
             logger.exception("FAILED to connect (check API key / network / model name)")
             raise
         self.ws = ws
-        self.runtime["connected"] = True
-        logger.info("connected.")
+        # Not "connected" yet: the socket can open and still be rejected a
+        # moment later (e.g. bad API key). We only report connected once the
+        # server accepts the session (session.created in _handle).
+        logger.info("websocket open, waiting for session.created ...")
 
         try:
             await self._configure()
@@ -187,12 +213,28 @@ class OpenAIRealtimeClient:
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            if not self.runtime.get("connected") and not self.runtime.get("last_error"):
+                # Closed before the session was ever accepted.
+                rcvd = getattr(e, "rcvd", None)  # close frame, if any
+                if rcvd is not None:
+                    detail = getattr(rcvd, "reason", "") or f"code {getattr(rcvd, 'code', '?')}"
+                    self.runtime["last_error"] = f"OpenAI closed the connection ({detail})"
+                else:
+                    self.runtime["last_error"] = _connect_error_reason(e)
             logger.warning("recv loop ended: %s", e)
 
     async def _handle(self, data: dict) -> None:
         etype = data.get("type", "")
         if etype not in _NOISY_EVENTS:
             logger.debug("event: %s", etype)
+
+        if etype == "session.created":
+            # Only now has OpenAI actually accepted the session (a bad key can
+            # pass the websocket handshake and get rejected afterwards).
+            self.runtime["connected"] = True
+            self.runtime["last_error"] = None
+            logger.info("connected (session accepted by OpenAI).")
+            return
 
         if etype in _AUDIO_DELTA:
             delta = data.get("delta")
@@ -265,7 +307,12 @@ class OpenAIRealtimeClient:
             return
 
         if etype == "error":
-            logger.error("API error: %s", json.dumps(data.get("error", data)))
+            err = data.get("error", data) or {}
+            logger.error("API error: %s", json.dumps(err))
+            if not self.runtime.get("connected"):
+                # Rejected before the session was accepted — keep the reason
+                # so the settings UI can say why instead of "reconnecting…".
+                self.runtime["last_error"] = _api_error_reason(err)
             return
 
     # ------------------------------------------------------------------ #
