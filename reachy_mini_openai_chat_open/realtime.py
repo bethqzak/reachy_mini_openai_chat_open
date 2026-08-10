@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 
 import websockets
 
@@ -25,6 +26,16 @@ from .tools import ToolContext, dispatch, tool_schemas
 logger = get_logger("realtime")
 
 REALTIME_URL = "wss://api.openai.com/v1/realtime?model={model}"
+
+# The greeting is a script, not a brief, so the model is told to read it out
+# rather than act on it. These instructions replace the session ones for that
+# single response, which is what stops the persona prompt from talking the
+# model into "improving" the wording.
+GREETING_PROMPT = (
+    "Start the conversation now by saying the following out loud, word for "
+    "word, exactly as written. Do not translate it, shorten it, rephrase it, "
+    "or add anything of your own:\n\n"
+)
 
 # Event-name variants across API revisions (GA renamed several).
 _AUDIO_DELTA = {"response.output_audio.delta", "response.audio.delta"}
@@ -79,6 +90,13 @@ class OpenAIRealtimeClient:
         self.restart_event = restart_event
         self.ws = None
         self._response_active = False
+        # Session/greeting handshake. The mic loop runs from the start but does
+        # not forward anything until _mic_open is set: the media backend has
+        # been recording since the app launched, so the first reads hand back a
+        # backlog of room noise that would trip the server's VAD and cancel the
+        # greeting before a word of it is spoken.
+        self._session_ready = asyncio.Event()
+        self._mic_open = asyncio.Event()
         self._pending_calls: dict[str, str] = {}  # call_id -> name
         self._handled: set[str] = set()  # call_ids already executed
 
@@ -100,21 +118,19 @@ class OpenAIRealtimeClient:
         # server accepts the session (session.created in _handle).
         logger.info("websocket open, waiting for session.created ...")
 
+        # The receive loop goes first so session.updated and the greeting's own
+        # events are actually seen; the mic loop starts alongside it but gated,
+        # draining the backend without forwarding anything yet.
+        tasks = [
+            asyncio.create_task(self._recv_loop()),
+            asyncio.create_task(self._mic_loop(stop_event)),
+        ]
         try:
             await self._configure()
-            # Greet only on the very first connection, not on reconnects/restarts.
-            if (self.cfg.greet_on_start and self.cfg.greeting
-                    and not self.runtime.get("greeted")):
-                await self._send({
-                    "type": "response.create",
-                    "response": {"instructions": self.cfg.greeting},
-                })
-                self.runtime["greeted"] = True
+            await asyncio.sleep(0.3)  # let the gated mic loop eat the backlog
+            await self._greet(stop_event)
+            self._mic_open.set()
 
-            tasks = [
-                asyncio.create_task(self._mic_loop(stop_event)),
-                asyncio.create_task(self._recv_loop()),
-            ]
             while not stop_event.is_set() and not self._restart_requested():
                 if any(t.done() for t in tasks):
                     for t in tasks:
@@ -123,10 +139,10 @@ class OpenAIRealtimeClient:
                                          t.get_coro().__qualname__)
                     break
                 await asyncio.sleep(0.2)
-            for t in tasks:
+        finally:
+            for t in tasks:  # also runs if _configure/_greet raised
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
-        finally:
             self.runtime["connected"] = False
             try:
                 await ws.close()
@@ -184,20 +200,87 @@ class OpenAIRealtimeClient:
         await self.ws.send(json.dumps(event))
 
     # ------------------------------------------------------------------ #
+    async def _greet(self, stop_event) -> None:
+        """Speak the start-of-session greeting, then return.
+
+        Only on the very first connection of a run — not on reconnects or on a
+        settings restart. The caller keeps the microphone shut for the whole of
+        it, which is the only reliable way to stop a noisy room from barging in
+        and cancelling the greeting a syllable in.
+        """
+        if not (self.cfg.greet_on_start and self.cfg.greeting):
+            return
+        if self.runtime.get("greeted"):
+            return
+
+        # session.update is applied asynchronously; greeting before it lands
+        # would use the wrong voice (and, on a slow session, be dropped).
+        try:
+            await asyncio.wait_for(self._session_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("no session.updated after 10s — greeting anyway")
+
+        logger.info("greeting (%d words) ...", len(self.cfg.greeting.split()))
+        await self._send({
+            "type": "response.create",
+            "response": {"instructions": GREETING_PROMPT + self.cfg.greeting},
+        })
+        self.runtime["greeted"] = True
+
+        # Wait for it to be generated *and* played: response.done only means the
+        # audio has all arrived, and the speaker queue can be a long way behind
+        # it. Budget roughly 2.5 spoken words a second, plus slack.
+        budget = min(180.0, 10.0 + len(self.cfg.greeting.split()) / 2.5)
+        sent_at = time.monotonic()
+        started = False
+        quiet_since: float | None = None
+        while True:
+            if stop_event.is_set() or self._restart_requested() or self.ws is None:
+                return
+            now = time.monotonic()
+            if self._response_active or self.speaker.is_talking:
+                started, quiet_since = True, None  # a tool call can chain a turn
+            elif not started:
+                if now - sent_at > 8.0:
+                    logger.warning("greeting never started — opening the mic")
+                    return
+            elif quiet_since is None:
+                quiet_since = now
+            elif now - quiet_since >= 1.5:
+                logger.info("greeting spoken in %.0fs — mic open", now - sent_at)
+                return
+            if now - sent_at > budget:
+                logger.warning("greeting still going after %.0fs — opening the "
+                               "mic anyway", budget)
+                return
+            await asyncio.sleep(0.1)
+
+    # ------------------------------------------------------------------ #
     async def _mic_loop(self, stop_event) -> None:
         loop = asyncio.get_event_loop()
+        dropped = 0
         while not stop_event.is_set():
             if self.cfg.half_duplex:
                 self.mic.muted = self.speaker.is_talking
             chunk = await loop.run_in_executor(None, self.mic.read_chunk)
-            if chunk:
-                try:
-                    await self._send({"type": "input_audio_buffer.append", "audio": chunk})
-                except Exception as e:
-                    logger.warning("mic upload stopped (websocket closed?): %s", e)
-                    break
-            else:
+            if not chunk:
                 await asyncio.sleep(0.005)
+                continue
+            if not self._mic_open.is_set():
+                # Read but deliberately not forwarded: keeps the backend's
+                # recording buffer drained (so no backlog lands on OpenAI in one
+                # burst) while the greeting has the floor.
+                dropped += 1
+                continue
+            if dropped:
+                logger.debug("mic open — discarded %d chunk(s) recorded before "
+                             "the session was ready", dropped)
+                dropped = 0
+            try:
+                await self._send({"type": "input_audio_buffer.append", "audio": chunk})
+            except Exception as e:
+                logger.warning("mic upload stopped (websocket closed?): %s", e)
+                break
         logger.debug("mic loop ended.")
 
     # ------------------------------------------------------------------ #
@@ -234,6 +317,12 @@ class OpenAIRealtimeClient:
             self.runtime["connected"] = True
             self.runtime["last_error"] = None
             logger.info("connected (session accepted by OpenAI).")
+            return
+
+        if etype == "session.updated":
+            # Our session.update has actually been applied — the greeting (and
+            # the voice it should be spoken in) can go now.
+            self._session_ready.set()
             return
 
         if etype in _AUDIO_DELTA:

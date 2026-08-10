@@ -162,7 +162,7 @@ All settings are environment variables (see `.env.example`):
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime model |
 | `OPENAI_REALTIME_VOICE` | `marin` | Voice (marin, cedar, alloy, echo, shimmer, …) |
 | `REACHY_INSTRUCTIONS` | built-in | System prompt / personality |
-| `REACHY_GREETING` | built-in | What it says on start |
+| `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes |
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |
 | `REACHY_ENABLE_CAMERA` | `true` | Enable camera vision + face tracking |
 | `REACHY_BLUR_FACES` | `true` | Pixelate faces before a camera frame is sent to OpenAI |
