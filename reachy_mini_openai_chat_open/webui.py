@@ -35,6 +35,21 @@ def _app_version() -> str:
         return "dev"
 
 
+def _clamp_volume(value, lo: float = 0.0, hi: float = 3.0) -> float:
+    """Coerce a UI-supplied volume multiplier into a safe range.
+
+    Never trust the browser: anything out of range is pinned, and junk falls
+    back to unity rather than silencing or deafening the robot.
+    """
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if val != val:  # NaN — comparisons are all False, so it would clamp to `hi`
+        return 1.0
+    return max(lo, min(hi, val))
+
+
 # Voices supported by the Realtime API (for the UI dropdown).
 VOICES = ["marin", "cedar", "alloy", "ash", "ballad", "coral", "echo",
           "sage", "shimmer", "verse"]
@@ -65,6 +80,7 @@ def register_routes(app) -> None:
         cfg = app.cfg
         ft = app.face_tracker
         face_available = bool(ft is not None and getattr(ft, "available", False))
+        speaker = getattr(app, "speaker", None)
         return {
             "app": APP_NAME,
             "version": _app_version(),
@@ -78,6 +94,9 @@ def register_routes(app) -> None:
                 "ambient": cfg.ambient_enabled,
                 "half_duplex": cfg.half_duplex,
                 "camera": cfg.enable_camera,
+                # Read live off the speaker, not a config field — that's what
+                # lets the page tell its own echoed-back value from a stale one.
+                "speaker_volume": float(getattr(speaker, "volume", 1.0)),
             },
             "status": {
                 "connected": bool(app._runtime.get("connected", False)),
@@ -119,6 +138,10 @@ def register_routes(app) -> None:
         if "half_duplex" in data:
             cfg.half_duplex = bool(data["half_duplex"])
             applied.append("half_duplex")
+        speaker = getattr(app, "speaker", None)
+        if "speaker_volume" in data and speaker is not None:
+            speaker.volume = _clamp_volume(data["speaker_volume"])
+            applied.append("speaker_volume")
 
         # --- reconnect settings ---
         for key, attr in RECONNECT_FIELDS.items():

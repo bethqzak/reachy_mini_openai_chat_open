@@ -54,6 +54,19 @@
       </label>
     </section>
 
+    <!-- Speaker -->
+    <section class="card">
+      <h2>Speaker</h2>
+      <p class="hint">Applies instantly and resets to 100% when the app restarts.</p>
+      <div class="field">
+        <label for="speaker_volume">Volume <span id="volVal" class="range-val">100%</span></label>
+        <input type="range" id="speaker_volume" min="0" max="300" step="5" value="100" />
+        <p class="hint" id="volNote">Above 100% the loudest parts are soft-limited
+          rather than clipped, so it stays clean-ish — but the speaker is tiny.
+          Back off if it starts to sound rattly or strained.</p>
+      </div>
+    </section>
+
     <!-- Voice & personality -->
     <section class="card">
       <h2>Voice &amp; personality</h2>

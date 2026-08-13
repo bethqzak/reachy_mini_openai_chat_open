@@ -21,6 +21,48 @@ async function api(path, opts) {
   return res.json();
 }
 
+// ---- optimistic writes ----
+// /api/state is polled every 3s, so a response already in flight when you drag
+// the slider would land after your POST and rewrite the old value. Hold the
+// value we just sent until the robot echoes it back (or we give up on it).
+const pending = new Map(); // settings key -> {value, expires}
+const PENDING_MS = 8000;   // a couple of poll rounds
+
+function claim(key, value) {
+  pending.set(key, { value, expires: Date.now() + PENDING_MS });
+}
+
+// True if the poll may write `serverValue` into this control.
+function settled(key, serverValue) {
+  const p = pending.get(key);
+  if (!p) return true;
+  const same = Math.abs(p.value - Number(serverValue)) < 1e-6;
+  // Echoed back, or we've waited long enough that the robot clearly disagrees
+  // (setting rejected, app restarted) — either way, stop holding it.
+  if (same || Date.now() > p.expires) { pending.delete(key); return true; }
+  return false;
+}
+
+// One chain per key so two fast changes to the same control can't land out of
+// order — the last value you chose is the last one the robot sees.
+const chains = new Map();
+
+function postSetting(key, value) {
+  claim(key, value);
+  const body = {}; body[key] = value;
+  const next = (chains.get(key) || Promise.resolve())
+    .then(() => api("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }))
+    .catch(() => {
+      pending.delete(key); // don't keep holding a value the robot never took
+      toast("Failed to update");
+    });
+  chains.set(key, next);
+  return next;
+}
+
 // ---- load current state ----
 async function loadState() {
   let data;
@@ -48,6 +90,7 @@ async function loadState() {
   setToggle("face_tracking", s.face_tracking);
   setToggle("ambient", s.ambient);
   setToggle("half_duplex", s.half_duplex);
+  setSlider("speaker_volume", "volVal", s.speaker_volume);
   $("faceNote").textContent = s.face_available ? "" : "(camera/cascade unavailable)";
 
   if (!loaded) {
@@ -83,6 +126,42 @@ async function loadState() {
 function setToggle(id, val) {
   const el = $(id);
   if (el && document.activeElement !== el) el.checked = !!val;
+}
+
+// ---- sliders ----
+// The UI works in percent, the backend in a plain multiplier.
+function showPct(valId, pct) {
+  const out = $(valId);
+  out.textContent = pct + "%";
+  out.classList.toggle("boosted", pct > 100 && pct <= 200);
+  out.classList.toggle("hot", pct > 200);
+}
+
+function setSlider(id, valId, val) {
+  const el = $(id);
+  if (!el || document.activeElement === el) return; // don't fight a live drag
+  const raw = val == null ? 1 : val;
+  if (!settled(id, raw)) return;                    // ours is newer
+  const pct = Math.round(raw * 100);
+  el.value = pct;
+  showPct(valId, pct);
+}
+
+function wireSlider(id, key, valId) {
+  const el = $(id);
+  let debounce = null;
+  const send = () => {
+    clearTimeout(debounce); debounce = null;
+    postSetting(key, Number(el.value) / 100);
+  };
+  // Apply while dragging (debounced) so you hear it change as you move, and
+  // again on release so the resting value is always the one that sticks.
+  el.addEventListener("input", () => {
+    showPct(valId, Number(el.value));
+    clearTimeout(debounce);
+    debounce = setTimeout(send, 150);
+  });
+  el.addEventListener("change", send);
 }
 
 function setStatus(connected, keySet, error) {
@@ -220,6 +299,7 @@ function escapeHtml(s) {
 
 // ---- boot ----
 ["face_tracking", "ambient", "half_duplex"].forEach(wireToggle);
+wireSlider("speaker_volume", "speaker_volume", "volVal");
 $("save").addEventListener("click", save);
 $("saveKey").addEventListener("click", saveKey);
 $("expand").addEventListener("click", () =>

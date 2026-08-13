@@ -55,6 +55,30 @@ def to_mono(samples: np.ndarray) -> np.ndarray:
     return samples.reshape(-1)
 
 
+# Below this level the limiter is a no-op, so normal-volume audio is passed
+# through bit-for-bit; above it the curve bends smoothly towards 1.0.
+LIMIT_KNEE = 0.8
+
+
+def soft_limit(samples: np.ndarray, knee: float = LIMIT_KNEE) -> np.ndarray:
+    """Bound samples to [-1, 1] with a soft knee rather than a hard clip.
+
+    Boosting past 100% has to go somewhere. `np.clip` would square off the
+    peaks — harsh distortion, and a square wave is the worst thing you can ask
+    a small speaker to reproduce. Instead the curve stays linear (unity gain)
+    below `knee` and compresses asymptotically above it, so loud passages get
+    louder and rounder instead of clipped, and the output never leaves [-1, 1].
+    """
+    over = np.abs(samples) > knee
+    if not over.any():
+        return samples
+    out = samples.copy()
+    span = 1.0 - knee
+    excess = (np.abs(samples[over]) - knee) / span
+    out[over] = np.sign(samples[over]) * (knee + span * np.tanh(excess))
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # Microphone
 # --------------------------------------------------------------------------- #
@@ -112,6 +136,10 @@ class SpeakerPlayer(threading.Thread):
         self._energy = 0.0
         self._energy_lock = threading.Lock()
         self._playing = threading.Event()
+        # Output volume multiplier (1.0 = unchanged). Plain attribute, no lock:
+        # a float assignment is atomic, so the playback thread can never see a
+        # torn value — worst case it uses the old one for one more chunk.
+        self.volume = 1.0
 
     # -- producer side -----------------------------------------------------
     def enqueue_pcm16(self, data: bytes) -> None:
@@ -168,8 +196,13 @@ class SpeakerPlayer(threading.Thread):
                 # smooth, and scale so normal speech lands near ~1.0
                 target = min(1.0, rms * 6.0)
                 self._energy = 0.6 * self._energy + 0.4 * target
+            # Energy above is measured on the model's own signal, so
+            # speech-reactive head motion stays the same however loud the
+            # speaker is set; only what goes to the hardware is scaled.
+            vol = self.volume
+            out = chunk if vol == 1.0 else soft_limit(chunk * vol)
             try:
-                self.media.push_audio_sample(chunk.reshape(-1, 1))
+                self.media.push_audio_sample(out.reshape(-1, 1))
             except Exception as e:
                 if throttle("speaker-push"):
                     logger.warning("speaker push failed (+%d suppressed): %s",

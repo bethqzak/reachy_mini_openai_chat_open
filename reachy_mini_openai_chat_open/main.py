@@ -88,6 +88,7 @@ class OpenAIChatApp(ReachyMiniApp):
         # Shared state for the settings UI + a flag to request a live reconnect.
         self.cfg = cfg
         self.motion = motion
+        self.speaker = speaker
         self.face_tracker = face_tracker
         self.transcript = transcript
         self._restart = threading.Event()
