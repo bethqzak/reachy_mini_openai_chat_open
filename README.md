@@ -133,12 +133,21 @@ touching a config file:
 
 - enter or replace your **OpenAI API key** (stored on the robot; the page never displays the full key),
 - toggle behaviours **live** (face tracking, ambient motion, half-duplex),
-- change **voice and personality** (system prompt, greeting, model) — saving briefly reconnects the OpenAI session to apply them. Conversations are always in English,
+- change **voice and personality** (system prompt, greeting, model) — saving briefly reconnects the OpenAI session to apply them. The system prompt and greeting are also kept for next time (see below). Conversations are always in English,
 - **test gestures** with one click (nod, dance, wiggle, …), and
 - watch the **live transcript** of the conversation (in-memory only; it is gone when the app stops).
 
 Everything on this page maps to the same settings below, so the `.env` file is
 still the way to set defaults; the panel is for tweaking on the fly.
+
+**What sticks between runs.** The **system prompt**, **greeting** and **model**
+you save on the page are written to
+`~/.config/reachy_mini_openai_chat_open/settings.json` and reloaded next time
+the app starts — so a personality you like is still there tomorrow. Because they
+were chosen deliberately and later, they take precedence over
+`REACHY_INSTRUCTIONS` / `REACHY_GREETING` / `OPENAI_REALTIME_MODEL` in your
+`.env`; delete that file to go back to the env/built-in defaults. Everything
+else on the page (voice, toggles, volume) applies for the current run only.
 
 ### Running from your computer or your phone
 
@@ -159,10 +168,10 @@ All settings are environment variables (see `.env.example`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | *(required)* | Your OpenAI key |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime model |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime model (overridden by a value saved on the settings page) |
 | `OPENAI_REALTIME_VOICE` | `marin` | Voice (marin, cedar, alloy, echo, shimmer, …) |
-| `REACHY_INSTRUCTIONS` | built-in | System prompt / personality |
-| `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes |
+| `REACHY_INSTRUCTIONS` | built-in | System prompt / personality (overridden by a value saved on the settings page) |
+| `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes (same override) |
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |
 | `REACHY_ENABLE_CAMERA` | `true` | Enable camera vision + face tracking |
 | `REACHY_BLUR_FACES` | `true` | Pixelate faces before a camera frame is sent to OpenAI |
@@ -204,7 +213,7 @@ robot mic ─16kHz float─▶ resample 24kHz PCM16 ─▶ OpenAI Realtime ─�
 - `tools.py` — the `express`, `look`, and `set_face_tracking` tools the model can call.
 - `transcript.py` — the in-memory live transcript shown in the settings page.
 - `webui.py` + `static/` — the dashboard settings page (FastAPI routes on `self.settings_app`, served at `:8042`).
-- `config.py` — env / `.env` configuration.
+- `config.py` — env / `.env` configuration, plus the settings-page values persisted to `settings.json`.
 - `main.py` — the `ReachyMiniApp` that starts and supervises everything.
 
 ## 8. Publishing your own copy

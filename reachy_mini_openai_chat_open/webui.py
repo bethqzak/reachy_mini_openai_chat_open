@@ -12,6 +12,9 @@ Two tiers of settings:
                 greeting); these set `app._restart` so the session reconnects
                 once with the new config. Conversation context resets, which is
                 why they're grouped separately in the UI.
+
+Changes to `config.PERSISTED_FIELDS` (personality, greeting and model) are also
+written to the per-user settings file so they are still there after a restart.
 """
 
 # NOTE: no `from __future__ import annotations` here. FastAPI resolves
@@ -20,6 +23,7 @@ Two tiers of settings:
 # parameter degrades into a required query param and all POSTs return 422.
 import re
 
+from .config import PERSISTED_FIELDS
 from .log import get_logger
 
 log = get_logger("webui")
@@ -35,11 +39,15 @@ def _app_version() -> str:
         return "dev"
 
 
-def _clamp_volume(value, lo: float = 0.0, hi: float = 3.0) -> float:
+def _clamp_volume(value, lo: float = 0.0, hi: float = 2.0) -> float:
     """Coerce a UI-supplied volume multiplier into a safe range.
 
     Never trust the browser: anything out of range is pinned, and junk falls
     back to unity rather than silencing or deafening the robot.
+
+    2.0 is the ceiling because the model's audio already arrives near
+    full-scale — past ~2x the soft limiter absorbs almost all the extra gain,
+    so the only thing a higher number buys is distortion.
     """
     try:
         val = float(value)
@@ -154,13 +162,30 @@ def register_routes(app) -> None:
                     applied.append(key)
                     reconnect = True
 
+        # Persist the fields that should survive a restart. A failure here
+        # only costs the user the change on next launch, so it must not fail
+        # the request — the setting is already live for this run.
+        saved: list[str] = []
+        save_failed = False
+        to_save = {k: getattr(cfg, RECONNECT_FIELDS.get(k, k))
+                   for k in applied if k in PERSISTED_FIELDS}
+        if to_save:
+            try:
+                from .config import save_settings
+                save_settings(to_save)
+                saved = sorted(to_save)
+            except Exception:
+                log.exception("could not persist settings (still active this run)")
+                save_failed = True
+
         if applied:
             log.info("settings changed: %s%s", ", ".join(applied),
                      " (reconnecting)" if reconnect else "")
         if reconnect:
             app._restart.set()
 
-        return {"ok": True, "applied": applied, "reconnect": reconnect}
+        return {"ok": True, "applied": applied, "reconnect": reconnect,
+                "saved": saved, "save_failed": save_failed}
 
     @sa.post("/api/key")
     async def set_key(request: Request):

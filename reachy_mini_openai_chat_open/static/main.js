@@ -133,8 +133,8 @@ function setToggle(id, val) {
 function showPct(valId, pct) {
   const out = $(valId);
   out.textContent = pct + "%";
-  out.classList.toggle("boosted", pct > 100 && pct <= 200);
-  out.classList.toggle("hot", pct > 200);
+  out.classList.toggle("boosted", pct > 100 && pct < 200);
+  out.classList.toggle("hot", pct >= 200);  // at the ceiling
 }
 
 function setSlider(id, valId, val) {
@@ -205,7 +205,14 @@ async function save() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    toast(r.reconnect ? "Saved — reconnecting to apply…" : "Saved (no change)");
+    // Some of these are written to disk; if that failed they still apply now
+    // but would be lost on restart, so say so rather than "Saved". Which
+    // fields those are is the server's business — don't duplicate the list.
+    if (r.save_failed) {
+      toast("Applied, but couldn't save for next time");
+    } else {
+      toast(r.reconnect ? "Saved — reconnecting to apply…" : "Saved (no change)");
+    }
   } catch (e) { toast("Save failed"); }
 }
 

@@ -11,10 +11,15 @@ file. The `.env` file is looked up (in order) at:
 The only *required* value is OPENAI_API_KEY — but it does not have to come
 from the environment: if it is missing, the app still starts and the user can
 paste the key into the settings page, which persists it via `save_api_key()`.
+
+Fields edited on the settings page that should stick (see `PERSISTED_FIELDS`) are saved
+to `~/.config/reachy_mini_openai_chat_open/settings.json` and layered on top of
+the environment at startup, so an edit made in the UI survives a restart.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -88,6 +93,54 @@ DEFAULT_GREETING = (
     "Mini, and give a little antenna wiggle."
 )
 
+# Config fields the settings page may persist across restarts. Add a name here
+# and it is saved and restored automatically — nothing else needs to change.
+PERSISTED_FIELDS = ("instructions", "greeting", "model")
+
+SETTINGS_FILE = "settings.json"
+
+
+def config_dir() -> Path:
+    """Per-user config directory (also holds the .env written by save_api_key)."""
+    return Path.home() / ".config" / "reachy_mini_openai_chat_open"
+
+
+def load_saved_settings() -> dict[str, str]:
+    """Read persisted settings-page values. Never raises: a corrupt or
+    hand-edited file must not stop the robot from starting."""
+    path = config_dir() / SETTINGS_FILE
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("ignoring unreadable settings file %s", path)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: v for k, v in data.items()
+            if k in PERSISTED_FIELDS and isinstance(v, str) and v.strip()}
+
+
+def save_settings(values: dict) -> Path:
+    """Merge `values` into the persisted settings file and return its path.
+
+    Only `PERSISTED_FIELDS` are stored. Written via a temp file + replace so an
+    interrupted save can't leave a half-written file behind.
+    """
+    merged = load_saved_settings()
+    merged.update({k: v for k, v in values.items()
+                   if k in PERSISTED_FIELDS and isinstance(v, str) and v.strip()})
+    cfg_dir = config_dir()
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    path = cfg_dir / SETTINGS_FILE
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(merged, indent=2, ensure_ascii=False) + "\n",
+                   encoding="utf-8")
+    tmp.replace(path)
+    logger.info("settings saved to %s: %s", path, ", ".join(sorted(values)))
+    return path
+
 
 @dataclass
 class Config:
@@ -127,7 +180,7 @@ class Config:
             logger.info("loaded settings from %s", env_path)
         else:
             logger.info("no .env file found; using environment/defaults only")
-        return cls(
+        cfg = cls(
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
             model=os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime"),
             voice=os.environ.get("OPENAI_REALTIME_VOICE", "marin"),
@@ -141,6 +194,14 @@ class Config:
             half_duplex=_bool("REACHY_HALF_DUPLEX", False),
             ambient_enabled=_bool("REACHY_AMBIENT", True),
         )
+        # A value saved from the settings page is a deliberate, later choice
+        # than anything in .env, so it wins.
+        saved = load_saved_settings()
+        for key, value in saved.items():
+            setattr(cfg, key, value)
+        if saved:
+            logger.info("restored saved settings: %s", ", ".join(sorted(saved)))
+        return cfg
 
 
 def save_api_key(key: str) -> Path:
@@ -149,7 +210,7 @@ def save_api_key(key: str) -> Path:
     Written to the per-user .env (already on the lookup path above) so the key
     survives restarts without the user ever editing a file by hand.
     """
-    cfg_dir = Path.home() / ".config" / "reachy_mini_openai_chat_open"
+    cfg_dir = config_dir()
     cfg_dir.mkdir(parents=True, exist_ok=True)
     path = cfg_dir / ".env"
     lines: list[str] = []
