@@ -178,6 +178,7 @@ All settings are environment variables (see `.env.example`):
 | `REACHY_FACE_TRACKING` | `false` | Start with face-follow enabled |
 | `REACHY_AMBIENT` | `true` | Ambient breathing / idle motion |
 | `REACHY_HALF_DUPLEX` | `false` | Mute mic while the robot talks (fixes echo/self-interruption) |
+| `REACHY_SPEAKER_LEAD_MS` | `250` | Speech kept buffered in the daemon while the robot talks — the most that can play on after you interrupt. Raise it if the voice stutters |
 
 **Personality:** the quickest way to change who the robot is, is to set
 `REACHY_INSTRUCTIONS`. It's just the system prompt for the Realtime model.

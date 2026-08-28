@@ -70,7 +70,8 @@ class OpenAIChatApp(ReachyMiniApp):
 
         # --- build the pieces --------------------------------------------
         mic = MicReader(media, cfg.robot_sample_rate, cfg.openai_sample_rate)
-        speaker = SpeakerPlayer(media, out_rate, cfg.openai_sample_rate)
+        speaker = SpeakerPlayer(media, out_rate, cfg.openai_sample_rate,
+                                lead_s=cfg.speaker_lead_ms / 1000.0)
 
         face_tracker = None
         if cfg.enable_camera:

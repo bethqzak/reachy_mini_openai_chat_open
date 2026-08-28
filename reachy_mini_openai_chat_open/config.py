@@ -164,6 +164,11 @@ class Config:
     # --- Audio (robot side is 16 kHz float32; OpenAI Realtime is 24 kHz PCM16) ---
     openai_sample_rate: int = 24000
     robot_sample_rate: int = 16000  # overridden at runtime from the media backend
+    # How much speech is kept buffered inside the daemon while the robot
+    # talks. The player paces itself so barge-in can cut the voice at once;
+    # this is the most that can still play after the cut. Raise it if the
+    # voice stutters on a slow host.
+    speaker_lead_ms: float = 250.0
 
     # --- Motion tuning ---
     ambient_enabled: bool = True
@@ -193,6 +198,7 @@ class Config:
             enable_face_tracking=_bool("REACHY_FACE_TRACKING", False),
             half_duplex=_bool("REACHY_HALF_DUPLEX", False),
             ambient_enabled=_bool("REACHY_AMBIENT", True),
+            speaker_lead_ms=_float("REACHY_SPEAKER_LEAD_MS", 250.0),
         )
         # A value saved from the settings page is a deliberate, later choice
         # than anything in .env, so it wins.

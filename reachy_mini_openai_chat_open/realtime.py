@@ -99,6 +99,9 @@ class OpenAIRealtimeClient:
         self._mic_open = asyncio.Event()
         self._pending_calls: dict[str, str] = {}  # call_id -> name
         self._handled: set[str] = set()  # call_ids already executed
+        # Replies cut short by a barge-in: item_id -> ms actually heard, so
+        # the logged transcript can be trimmed to match. Small ring buffer.
+        self._truncated: dict[str, int] = {}
 
     # ------------------------------------------------------------------ #
     async def run(self, stop_event) -> None:
@@ -329,22 +332,26 @@ class OpenAIRealtimeClient:
             delta = data.get("delta")
             if delta:
                 try:
-                    self.speaker.enqueue_pcm16(base64.b64decode(delta))
+                    self.speaker.enqueue_pcm16(base64.b64decode(delta),
+                                               item_id=data.get("item_id"))
                 except Exception as e:
                     if throttle("audio-delta"):
                         logger.warning("could not play audio delta: %s", e)
             return
 
         if etype == "input_audio_buffer.speech_started":
-            # User barged in: drop queued robot speech immediately.
+            # User barged in: stop the robot mid-word, then tell the server
+            # how much was actually heard so the model's own memory of what
+            # it said matches what the person heard.
             logger.debug("user speech detected%s",
                          " (interrupting response)" if self._response_active else "")
-            self.speaker.clear()
+            item_id, heard_ms = self.speaker.clear()
             if self._response_active:
                 try:
                     await self._send({"type": "response.cancel"})
                 except Exception as e:
                     logger.debug("response.cancel failed: %s", e)
+            await self._truncate_item(item_id, heard_ms)
             return
 
         if etype == "response.created":
@@ -382,6 +389,7 @@ class OpenAIRealtimeClient:
         if etype in _ASSISTANT_TRANSCRIPT:
             text = data.get("transcript")
             if text:
+                text = self._trim_interrupted(data.get("item_id"), text)
                 logger.info("robot: %s", text)
                 if self.logger:
                     self.logger.log_assistant(text)
@@ -403,6 +411,47 @@ class OpenAIRealtimeClient:
                 # so the settings UI can say why instead of "reconnecting…".
                 self.runtime["last_error"] = _api_error_reason(err)
             return
+
+    # ------------------------------------------------------------------ #
+    async def _truncate_item(self, item_id: str | None, heard_ms: float) -> None:
+        """Cut a cancelled reply down to what was actually spoken.
+
+        The server keeps the full generated text for an interrupted reply, so
+        without this the model believes it said everything — and refers back
+        to things nobody heard. `conversation.item.truncate` drops the unheard
+        audio and its transcript from the context; the chat log is trimmed to
+        match when the transcript arrives.
+        """
+        if not item_id or self.ws is None:
+            return
+        end_ms = int(max(0.0, heard_ms))
+        try:
+            await self._send({"type": "conversation.item.truncate",
+                              "item_id": item_id, "content_index": 0,
+                              "audio_end_ms": end_ms})
+        except Exception as e:
+            logger.debug("conversation.item.truncate failed: %s", e)
+            return
+        self._truncated[item_id] = end_ms
+        logger.info("interrupted at %.1fs — truncated item %s", end_ms / 1000.0, item_id)
+
+    def _trim_interrupted(self, item_id: str | None, text: str) -> str:
+        """Shorten an interrupted reply's transcript to roughly what was heard.
+
+        The transcript event always carries the full generated text; the
+        server gives no per-word timing. Speech runs at ~2.5 words/s, so the
+        heard portion is estimated by word count and marked as cut off.
+        """
+        if not item_id or item_id not in self._truncated:
+            return text
+        heard_ms = self._truncated.pop(item_id)
+        if len(self._truncated) > 16:  # never grows: entries die with their event
+            self._truncated.clear()
+        words = text.split()
+        keep = int(heard_ms / 1000.0 * 2.5)
+        if keep >= len(words):
+            return text
+        return " ".join(words[:keep]) + " — [interrupted]"
 
     # ------------------------------------------------------------------ #
     async def _run_tool(self, name: str, arguments: str, call_id: str) -> None:
