@@ -75,6 +75,17 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
+def _float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning("ignoring %s=%r (not a number); using %s", name, raw, default)
+        return default
+
+
 DEFAULT_INSTRUCTIONS = (
     "You are Reachy Mini, a small, friendly desk robot with a movable head and "
     "two antennas. You are curious, warm, playful and concise. Keep spoken "
