@@ -5,4 +5,3 @@ __pycache__/
 uv.lock
 .env
 .claude/
-LOCAL_SETUP.md
