@@ -92,6 +92,7 @@ async function loadState() {
   setToggle("half_duplex", s.half_duplex);
   setSlider("speaker_volume", "volVal", s.speaker_volume);
   $("faceNote").textContent = s.face_available ? "" : "(camera/cascade unavailable)";
+  if (camEnabled !== !!s.camera) { camEnabled = !!s.camera; camApply(); }
 
   if (!loaded) {
     $("voice").value = s.voice;
@@ -288,6 +289,80 @@ async function loadTranscript() {
   box.scrollTop = nearBottom ? box.scrollHeight : prevTop;
 }
 
+// ---- live camera view ----
+// Polls /api/camera.jpg one frame at a time: the next request only goes out
+// once the previous one has landed, so a slow robot or link never has frames
+// piling up behind each other. Stops while the tab is hidden or paused.
+const CAM_FRAME_MS = 150;   // ~6 fps target; the robot sets the real ceiling
+const CAM_RETRY_MS = 2000;  // back off while the camera is unavailable
+let camPaused = false;
+let camEnabled = null;      // from /api/state; null until the first poll
+let camTimer = null;
+let camInFlight = false;
+let camFails = 0;
+
+function camNote(msg) {
+  const n = $("camNote");
+  n.hidden = !msg;
+  if (msg) n.textContent = msg;
+}
+
+function camActive() {
+  return camEnabled === true && !camPaused && !document.hidden;
+}
+
+function camFetch() {
+  camTimer = null;
+  if (!camActive() || camInFlight) return;
+  camInFlight = true;
+  const img = $("cam");
+  img.src = "/api/camera.jpg?t=" + Date.now();
+}
+
+function camSchedule(ms) {
+  clearTimeout(camTimer);
+  camTimer = setTimeout(camFetch, ms);
+}
+
+function camApply() {
+  // (Re)start or stop polling to match the current state.
+  if (camEnabled === false) {
+    camNote("Camera disabled (REACHY_ENABLE_CAMERA=false)");
+    clearTimeout(camTimer); camTimer = null;
+    return;
+  }
+  if (camPaused) { camNote("Paused"); clearTimeout(camTimer); camTimer = null; return; }
+  if (!camActive()) return;
+  if (!$("cam").classList.contains("live")) camNote("Starting camera…");
+  if (!camInFlight && camTimer === null) camFetch();
+}
+
+function wireCamera() {
+  const img = $("cam");
+  img.addEventListener("load", () => {
+    camInFlight = false;
+    camFails = 0;
+    img.classList.add("live");
+    if (!camPaused) camNote("");
+    camSchedule(CAM_FRAME_MS);
+  });
+  img.addEventListener("error", () => {
+    camInFlight = false;
+    camFails++;
+    // Keep the last good frame up but say what's going on.
+    if (camFails >= 2) camNote("Camera unavailable — retrying…");
+    camSchedule(CAM_RETRY_MS);
+  });
+  $("camToggle").addEventListener("click", () => {
+    camPaused = !camPaused;
+    const b = $("camToggle");
+    b.textContent = camPaused ? "▶" : "⏸";
+    b.title = camPaused ? "Resume live view" : "Pause live view";
+    camApply();
+  });
+  document.addEventListener("visibilitychange", camApply);
+}
+
 // ---- expand / collapse transcript ----
 function setExpanded(on) {
   document.body.classList.toggle("transcript-full", on);
@@ -316,6 +391,7 @@ document.addEventListener("keydown", (e) => {
 });
 $("apikey").addEventListener("keydown", (e) => { if (e.key === "Enter") saveKey(); });
 buildGestures();
+wireCamera();
 loadState();
 loadTranscript();
 setInterval(loadState, 3000);

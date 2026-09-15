@@ -134,6 +134,7 @@ touching a config file:
 - enter or replace your **OpenAI API key** (stored on the robot; the page never displays the full key),
 - toggle behaviours **live** (face tracking, ambient motion, half-duplex),
 - change **voice and personality** (system prompt, greeting, model) — saving briefly reconnects the OpenAI session to apply them. The system prompt and greeting are also kept for next time (see below). Conversations are always in English,
+- see a **live camera view** of what the robot sees (a few frames a second, streamed only to your browser; pause it with the ⏸ button),
 - **test gestures** with one click (nod, dance, wiggle, …), and
 - watch the **live transcript** of the conversation (in-memory only; it is gone when the app stops).
 

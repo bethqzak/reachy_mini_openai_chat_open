@@ -233,3 +233,19 @@ def register_routes(app) -> None:
     @sa.get("/api/transcript")
     def transcript(n: int = 25):
         return {"entries": app.transcript.entries(n)}
+
+    @sa.get("/api/camera.jpg")
+    def camera_frame():
+        # One fresh frame for the page's live view, which polls this a few
+        # times a second. Served unblurred: it never leaves the robot's own
+        # network, unlike the frames sent to OpenAI. Small and low quality
+        # on purpose — it's a monitor, not a still.
+        media = getattr(app, "media", None)
+        if media is None or not app.cfg.enable_camera:
+            return JSONResponse({"error": "camera disabled"}, status_code=503)
+        from .vision import capture_jpeg
+        data = capture_jpeg(media, max_width=640, quality=60,
+                            blur_faces=False, quiet=True)
+        if data is None:
+            return JSONResponse({"error": "no frame"}, status_code=503)
+        return Response(content=data, media_type="image/jpeg")

@@ -148,6 +148,7 @@ While the app runs, open http://localhost:8042 to:
 - enter or replace the OpenAI API key,
 - change voice, personality (system prompt), greeting and model,
 - toggle face tracking, ambient motion and half-duplex live,
+- see a live view from the robot's camera,
 - test gestures,
 - watch the live transcript (in memory only).
 

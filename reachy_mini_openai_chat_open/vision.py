@@ -98,28 +98,36 @@ def pixelate_faces_bgr(bgr: np.ndarray) -> int:
     return count
 
 
-def capture_jpeg_data_uri(media, max_width: int = 768, quality: int = 70,
-                          blur_faces: bool = True) -> str | None:
-    """Grab one camera frame and return a `data:image/jpeg;base64,...` URI.
+def capture_jpeg(media, max_width: int = 768, quality: int = 70,
+                 blur_faces: bool = True, quiet: bool = False) -> bytes | None:
+    """Grab one camera frame and return it as JPEG bytes.
 
-    With `blur_faces` (the default), detected faces are pixelated before the
-    frame is encoded, so no unblurred image ever leaves the robot.
-    Returns None if no frame or if OpenCV is unavailable.
+    With `blur_faces`, detected faces are pixelated before the frame is
+    encoded. `quiet` rate-limits the failure logging (for callers that poll,
+    such as the settings page's live view, so a dead camera doesn't flood the
+    log at frame rate). Returns None if no frame or if OpenCV is unavailable.
     """
+    def warn(key: str, msg: str, *args) -> None:
+        if not quiet or throttle("capture-" + key):
+            logger.warning(msg, *args)
+
     if not _HAVE_CV2:
-        logger.warning("capture failed: OpenCV not installed")
+        warn("cv2", "capture failed: OpenCV not installed")
         return None
     try:
         frame = media.get_frame()
-    except Exception:
-        logger.exception("capture failed: media.get_frame() raised")
+    except Exception as e:
+        if quiet:
+            warn("raised", "capture failed: media.get_frame() raised: %s", e)
+        else:
+            logger.exception("capture failed: media.get_frame() raised")
         return None
     if frame is None:
-        logger.warning("capture failed: camera returned no frame")
+        warn("none", "capture failed: camera returned no frame")
         return None
     frame = np.asarray(frame)
     if frame.ndim != 3:
-        logger.warning("capture failed: unexpected frame shape %s", frame.shape)
+        warn("shape", "capture failed: unexpected frame shape %s", frame.shape)
         return None
 
     # Downscale to keep the payload small / fast.
@@ -128,23 +136,40 @@ def capture_jpeg_data_uri(media, max_width: int = 768, quality: int = 70,
         scale = max_width / float(w)
         frame = cv2.resize(frame, (max_width, int(h * scale)))
 
-    # reachy_mini frames are RGB; OpenCV encodes BGR.
-    bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    # The reachy_mini SDK hands out BGR frames (see MediaManager.get_frame),
+    # which is also what OpenCV encodes — no channel swap needed.
+    bgr = np.ascontiguousarray(frame)
     if blur_faces:
         # Fail closed: if we can't blur, we don't send the image at all.
         if not _load_privacy_cascades():
-            logger.warning("capture blocked: face blurring requested but no "
-                           "face detector is available")
+            warn("cascade", "capture blocked: face blurring requested but no "
+                 "face detector is available")
             return None
         n = pixelate_faces_bgr(bgr)
         if n:
             logger.info("pixelated %d face(s) before encoding", n)
     ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
     if not ok:
-        logger.warning("capture failed: JPEG encoding error")
+        warn("encode", "capture failed: JPEG encoding error")
         return None
-    b64 = base64.b64encode(buf.tobytes()).decode("ascii")
-    logger.debug("captured %dx%d frame (%d KB as JPEG)", w, h, len(b64) // 1366)
+    data = buf.tobytes()
+    logger.debug("captured %dx%d frame (%d KB as JPEG)", w, h, len(data) // 1024)
+    return data
+
+
+def capture_jpeg_data_uri(media, max_width: int = 768, quality: int = 70,
+                          blur_faces: bool = True) -> str | None:
+    """Grab one camera frame and return a `data:image/jpeg;base64,...` URI.
+
+    With `blur_faces` (the default), detected faces are pixelated before the
+    frame is encoded, so no unblurred image ever leaves the robot.
+    Returns None if no frame or if OpenCV is unavailable.
+    """
+    data = capture_jpeg(media, max_width=max_width, quality=quality,
+                        blur_faces=blur_faces)
+    if data is None:
+        return None
+    b64 = base64.b64encode(data).decode("ascii")
     return f"data:image/jpeg;base64,{b64}"
 
 
@@ -222,7 +247,7 @@ class FaceTracker(threading.Thread):
         if frame.ndim != 3:
             return
         h, w = frame.shape[:2]
-        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # SDK frames are BGR
         faces = self._cascade.detectMultiScale(gray, 1.2, 5, minSize=(48, 48))
         if len(faces) == 0:
             with self._lock:

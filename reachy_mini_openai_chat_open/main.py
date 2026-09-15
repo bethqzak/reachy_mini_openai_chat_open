@@ -88,6 +88,7 @@ class OpenAIChatApp(ReachyMiniApp):
 
         # Shared state for the settings UI + a flag to request a live reconnect.
         self.cfg = cfg
+        self.media = media  # the settings page's live camera view reads from it
         self.motion = motion
         self.speaker = speaker
         self.face_tracker = face_tracker

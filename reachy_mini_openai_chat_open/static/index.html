@@ -96,6 +96,20 @@
       <button id="save" class="primary">Save &amp; apply</button>
     </section>
 
+    <!-- Camera -->
+    <section class="card" id="cameraCard">
+      <div class="card-head">
+        <h2>Camera</h2>
+        <button type="button" id="camToggle" class="icon" title="Pause live view">⏸</button>
+      </div>
+      <p class="hint">What the robot sees right now. Streamed only to this page —
+        nothing is saved or uploaded, and faces are not blurred here.</p>
+      <div class="cam">
+        <img id="cam" alt="live camera view" />
+        <div id="camNote" class="cam-note">Starting camera…</div>
+      </div>
+    </section>
+
     <!-- Test movement -->
     <section class="card">
       <h2>Test movement</h2>
