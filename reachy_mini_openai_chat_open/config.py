@@ -79,11 +79,12 @@ def _float(name: str, default: float) -> float:
     """Like _bool: a malformed value falls back to the default rather than
     stopping the app from starting."""
     raw = os.environ.get(name)
-    if raw is None:
+    if raw is None or not raw.strip():
         return default
     try:
         return float(raw.strip())
     except ValueError:
+        logger.warning("ignoring %s=%r (not a number); using %s", name, raw, default)
         return default
 
 
