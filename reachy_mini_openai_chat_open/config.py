@@ -75,6 +75,18 @@ def _bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
+def _float(name: str, default: float) -> float:
+    """Like _bool: a malformed value falls back to the default rather than
+    stopping the app from starting."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return default
+
+
 DEFAULT_INSTRUCTIONS = (
     "You are Reachy Mini, a small, friendly desk robot with a movable head and "
     "two antennas. You are curious, warm, playful and concise. Keep spoken "
