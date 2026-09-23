@@ -48,9 +48,17 @@ You pay OpenAI directly for usage. Apache-2.0 licensed.
 
 ## 1. Requirements
 
-- A Reachy Mini (Lite or Wireless) with the daemon running.
+- A Reachy Mini (Lite or Wireless) with the daemon running (`reachy-mini` 1.8.4 or newer; tested with 1.11.0).
 - An **OpenAI API key** with **Realtime API** access.
-- Python 3.10+.
+- Python 3.11+ (`reachy-mini` 1.9 and later require it; 3.10 works only with `reachy-mini` 1.8.4).
+
+Daemon 1.8.4 through 1.11 are supported (last verified against `reachy-mini`
+1.11.0, released 21 Sept 2026). Intel Macs top out
+at 1.8.4 because `reachy-mini` 1.9 and later hard-require `onnxruntime==1.27.0`,
+which has no x86_64 macOS wheels; this app sets no upper bound, so pip resolves
+1.8.4 there and the SDK calls it makes are identical. Daemon 1.11 dropped
+`scipy` from the SDK's own dependencies; this app declares its own `scipy` (for
+audio resampling), so nothing changes for you.
 
 ## 2. Install on the robot
 

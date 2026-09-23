@@ -4,17 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reachy-mini-openai-chat-open"
-version = "0.1.0"
+version = "0.1.1"
 description = "Talk with Reachy Mini using your own OpenAI Realtime API key. Voice conversation with ambient movement, expressive gestures, and camera vision. Open edition: no logging, nothing leaves the robot."
 readme = "README.md"
+# 3.10 is kept only for the reachy-mini 1.8.4 floor below (its last 3.10
+# release); reachy-mini 1.9+ requires Python >= 3.11, so that is the
+# practical minimum everywhere else.
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Beth Cusack" }]
 keywords = ["reachy", "reachy-mini", "robot", "openai", "realtime", "voice", "conversation"]
 
 dependencies = [
-    "reachy-mini",
+    # Floor only, no upper bound: Intel Macs top out at reachy-mini 1.8.4
+    # (1.9.0+ hard-requires onnxruntime==1.27.0, arm64-only on macOS) and
+    # must keep working. Every SDK surface this app uses is identical from
+    # 1.8.4 through 1.11.0 (last verified against 1.11.0).
+    "reachy-mini>=1.8.4",
     "numpy>=1.24",
+    # scipy must stay declared here: reachy-mini 1.11.0 dropped it as a
+    # runtime dependency, and audio.py uses scipy.signal.resample_poly.
     "scipy>=1.10",
     "websockets>=12.0",
     # <5: OpenCV 5 removed cv2.CascadeClassifier / cv2.data.haarcascades,

@@ -16,7 +16,8 @@ optional: it is a GUI that launches the same daemon for you.
 Install these on the new computer:
 
 - **Git** — https://git-scm.com/downloads
-- **Python 3.10 or newer** — https://www.python.org/downloads/
+- **Python 3.11 or newer** — https://www.python.org/downloads/
+  (`reachy-mini` 1.9 and later do not install on older versions)
   (on Windows, tick "Add python.exe to PATH" in the installer)
 - **uv** (optional, but faster than pip):
 
@@ -72,6 +73,15 @@ This installs the app in editable mode together with its dependencies:
 `reachy-mini` (which includes the daemon), `numpy`, `scipy`, `websockets`,
 `opencv-python` and `python-dotenv`. Editable mode means a later `git pull`
 takes effect without reinstalling.
+
+If you already have an older `reachy-mini` installed, bring it up to date with
+the version this app was last tested against (1.11.0):
+
+```bash
+pip install --upgrade reachy-mini
+```
+
+(Intel Macs stay on 1.8.4; see the Requirements section of the README.)
 
 ## 5. Add your OpenAI key
 
