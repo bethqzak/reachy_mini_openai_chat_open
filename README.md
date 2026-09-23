@@ -1,6 +1,6 @@
 ---
 title: Reachy Mini OpenAI Chat (Open)
-emoji: 🤖
+emoji: 💬
 colorFrom: purple
 colorTo: green
 sdk: static
@@ -11,7 +11,7 @@ tags:
   - reachy_mini_python_app
 ---
 
-# Reachy Mini · OpenAI Chat (Open) 🤖
+# Reachy Mini · OpenAI Chat (Open) 💬
 
 Talk with your **Reachy Mini** using **your own OpenAI key**. This is a lean,
 standalone Reachy Mini app that reproduces the feel of the official
