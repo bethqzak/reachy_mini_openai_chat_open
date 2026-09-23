@@ -34,6 +34,15 @@ except Exception:  # allows import / syntax-check off-robot
     logger.warning("reachy_mini.utils.create_head_pose unavailable; "
                    "head pose control disabled")
 
+# The SDK's own neutral antenna angles (~10° apart to avoid shaking when
+# perfectly vertical). Fall back to the same literal if the import fails.
+try:
+    from reachy_mini.reachy_mini import (  # type: ignore
+        INIT_ANTENNAS_JOINT_POSITIONS as _NEUTRAL_ANTENNAS,
+    )
+except Exception:
+    _NEUTRAL_ANTENNAS = [-0.1745, 0.1745]
+
 
 # --------------------------------------------------------------------------- #
 # Gesture library — each returns an offset dict given local time t (seconds).
@@ -180,7 +189,7 @@ class MotionController(threading.Thread):
         self.cfg = config
         self.speaker = speaker
         self.face_tracker = face_tracker
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
 
         self._gestures: list[tuple[float, float, callable]] = []  # (start, dur, fn)
         self._glock = threading.Lock()
@@ -220,7 +229,33 @@ class MotionController(threading.Thread):
         return True
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
+
+    def go_neutral(self, duration: float = 1.0) -> None:
+        """Glide the head, antennas and body back to the neutral (init) pose.
+
+        Call after :meth:`stop` has been issued and the loop has exited, so
+        the 50 Hz set_target stream is no longer fighting the move. Used on
+        shutdown so the robot is left upright and centred, not asleep.
+        """
+        self._stop_event.set()
+        if self.is_alive():
+            self.join(timeout=1.0)
+        neutral = self._make_head(0.0, 0.0, 0.0, 0.0)
+        antennas = np.array(_NEUTRAL_ANTENNAS)
+        try:
+            self.mini.goto_target(head=neutral, antennas=antennas,
+                                  duration=duration, body_yaw=0.0)
+        except Exception as e:
+            logger.warning("goto_target to neutral failed (%s); "
+                           "falling back to set_target", e)
+            try:
+                kwargs = {"antennas": antennas, "body_yaw": 0.0}
+                if neutral is not None:
+                    kwargs["head"] = neutral
+                self.mini.set_target(**kwargs)
+            except Exception as e2:
+                logger.warning("could not reset to neutral pose: %s", e2)
 
     # -- internals ---------------------------------------------------------
     def _active_gesture_offsets(self, now: float) -> dict:
@@ -261,7 +296,7 @@ class MotionController(threading.Thread):
     def run(self) -> None:
         t0 = time.monotonic()
         dt = 0.02  # 50 Hz
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             now = time.monotonic()
             t = now - t0
 
