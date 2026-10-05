@@ -110,6 +110,25 @@
       </div>
     </section>
 
+    <!-- Face blurring -->
+    <section class="card">
+      <h2>Face blurring</h2>
+      <p class="hint">How faces are hidden in camera frames sent to OpenAI. Applies
+        instantly and resets to the <code>.env</code> values when the app restarts.</p>
+      <div class="row">
+        <label for="blur_style">Blur style</label>
+        <select id="blur_style"></select>
+      </div>
+      <div class="row">
+        <label for="face_method">Face detector</label>
+        <select id="face_method"></select>
+      </div>
+      <div class="row">
+        <label for="face_runtime">Detector runtime <em>(YuNet only)</em></label>
+        <select id="face_runtime"></select>
+      </div>
+    </section>
+
     <!-- Test movement -->
     <section class="card">
       <h2>Test movement</h2>

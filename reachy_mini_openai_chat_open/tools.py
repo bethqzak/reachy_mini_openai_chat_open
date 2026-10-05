@@ -101,8 +101,11 @@ def dispatch(name: str, args: dict, ctx: ToolContext) -> tuple[str, str | None]:
     if name == "look":
         if not ctx.config.enable_camera:
             return ('{"ok": false, "error": "camera disabled"}', None)
+        cfg = ctx.config
         uri = capture_jpeg_data_uri(
-            ctx.media, blur_faces=getattr(ctx.config, "blur_faces", True))
+            ctx.media, blur=getattr(cfg, "blur_faces", True),
+            method=cfg.face_method, runtime=cfg.face_runtime,
+            style=cfg.blur_style)
         if uri is None:
             return ('{"ok": false, "error": "could not capture image"}', None)
         # Nudge a little "looking" gesture for liveliness.

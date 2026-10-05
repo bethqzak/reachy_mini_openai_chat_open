@@ -36,7 +36,9 @@ function claim(key, value) {
 function settled(key, serverValue) {
   const p = pending.get(key);
   if (!p) return true;
-  const same = Math.abs(p.value - Number(serverValue)) < 1e-6;
+  const same = typeof p.value === "number"
+    ? Math.abs(p.value - Number(serverValue)) < 1e-6
+    : p.value === serverValue;
   // Echoed back, or we've waited long enough that the robot clearly disagrees
   // (setting rejected, app restarted) — either way, stop holding it.
   if (same || Date.now() > p.expires) { pending.delete(key); return true; }
@@ -86,6 +88,14 @@ async function loadState() {
     });
   }
 
+  // detection / blur dropdowns
+  fillSelect("blur_style", data.blur_styles);
+  fillSelect("face_method", data.face_methods);
+  fillSelect("face_runtime", data.face_runtimes);
+  setSelect("blur_style", s.blur_style);
+  setSelect("face_method", s.face_method);
+  setSelect("face_runtime", s.face_runtime);
+
   // Only overwrite fields the user isn't editing right now.
   setToggle("face_tracking", s.face_tracking);
   setToggle("ambient", s.ambient);
@@ -127,6 +137,45 @@ async function loadState() {
 function setToggle(id, val) {
   const el = $(id);
   if (el && document.activeElement !== el) el.checked = !!val;
+}
+
+// ---- instant dropdowns ----
+// Options come from the server as plain names, or as {name, note, available}
+// where something on the list may not be installed on this robot.
+function fillSelect(id, options) {
+  const el = $(id);
+  if (el.options.length > 0) return;
+  (options || []).forEach((opt) => {
+    const o = document.createElement("option");
+    const name = typeof opt === "string" ? opt : opt.name;
+    o.value = name; o.textContent = name;
+    if (typeof opt !== "string") {
+      o.title = opt.note || "";
+      if (!opt.available) { o.disabled = true; o.textContent += " (unavailable)"; }
+    }
+    el.appendChild(o);
+  });
+}
+
+function setSelect(id, val) {
+  const el = $(id);
+  if (!el || document.activeElement === el) return;
+  if (settled(id, val)) el.value = val;
+}
+
+function wireSelect(id) {
+  $(id).addEventListener("change", async (e) => {
+    const r = await postSetting(id, e.target.value);
+    if (!r) return;                       // postSetting already said it failed
+    if ((r.applied || []).includes(id)) {
+      toast("Updated: " + id.replace("_", " "));
+    } else {
+      // Refused (that combination can't run here): show what is really set.
+      pending.delete(id);
+      toast("Not available on this robot");
+      loadState();
+    }
+  });
 }
 
 // ---- sliders ----
@@ -381,6 +430,7 @@ function escapeHtml(s) {
 
 // ---- boot ----
 ["face_tracking", "ambient", "half_duplex"].forEach(wireToggle);
+["blur_style", "face_method", "face_runtime"].forEach(wireSelect);
 wireSlider("speaker_volume", "speaker_volume", "volVal");
 $("save").addEventListener("click", save);
 $("saveKey").addEventListener("click", saveKey);

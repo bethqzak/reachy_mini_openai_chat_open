@@ -184,6 +184,9 @@ All settings are environment variables (see `.env.example`):
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |
 | `REACHY_ENABLE_CAMERA` | `true` | Enable camera vision + face tracking |
 | `REACHY_BLUR_FACES` | `true` | Pixelate faces before a camera frame is sent to OpenAI |
+| `REACHY_BLUR_STYLE` | `gaussian-ellipse` | How a face is obscured: `gaussian-ellipse`, `gaussian-square`, `mosaic-ellipse`, `mosaic-square`, `outline` (debug only, hides nothing) |
+| `REACHY_FACE_METHOD` | `yunet` | Face detector: `yunet` or `haar` |
+| `REACHY_FACE_RUNTIME` | `onnx-cpu` | What runs YuNet: `onnx-cpu`, `opencv`, `coreml` (macOS), `directml` (Windows), `openvino` (Windows/Linux) |
 | `REACHY_FACE_TRACKING` | `false` | Start with face-follow enabled |
 | `REACHY_AMBIENT` | `true` | Ambient breathing / idle motion |
 | `REACHY_HALF_DUPLEX` | `false` | Mute mic while the robot talks (fixes echo/self-interruption) |

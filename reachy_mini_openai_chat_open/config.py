@@ -24,6 +24,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .blur import DEFAULT_STYLE, STYLES
+from .detection import DEFAULT_METHOD, DEFAULT_RUNTIME, DETECTORS, RUNTIMES
 from .log import get_logger, setup_logging
 
 logger = get_logger("config")
@@ -86,6 +88,20 @@ def _float(name: str, default: float) -> float:
     except ValueError:
         logger.warning("ignoring %s=%r (not a number); using %s", name, raw, default)
         return default
+
+
+def _choice(name: str, default: str, options) -> str:
+    """Like _float: a value that isn't one of `options` falls back to the
+    default rather than stopping the app from starting."""
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    value = raw.strip().lower()
+    if value not in options:
+        logger.warning("ignoring %s=%r (not one of: %s); using %s", name, raw,
+                       ", ".join(options), default)
+        return default
+    return value
 
 
 DEFAULT_INSTRUCTIONS = (
@@ -171,6 +187,9 @@ class Config:
     # --- Behaviour ---
     enable_camera: bool = True
     blur_faces: bool = True  # pixelate faces before a camera image leaves the robot
+    blur_style: str = DEFAULT_STYLE  # how a face is obscured (see blur.STYLES)
+    face_method: str = DEFAULT_METHOD  # face detector (see detection.DETECTORS)
+    face_runtime: str = DEFAULT_RUNTIME  # what runs it (see detection.RUNTIMES)
     enable_face_tracking: bool = False  # can be toggled at runtime by the model
     half_duplex: bool = False  # mute mic while the robot is talking (anti-echo)
 
@@ -208,6 +227,9 @@ class Config:
             transcription_language=os.environ.get("REACHY_LANGUAGE", "en"),
             enable_camera=_bool("REACHY_ENABLE_CAMERA", True),
             blur_faces=_bool("REACHY_BLUR_FACES", True),
+            blur_style=_choice("REACHY_BLUR_STYLE", DEFAULT_STYLE, STYLES),
+            face_method=_choice("REACHY_FACE_METHOD", DEFAULT_METHOD, DETECTORS),
+            face_runtime=_choice("REACHY_FACE_RUNTIME", DEFAULT_RUNTIME, RUNTIMES),
             enable_face_tracking=_bool("REACHY_FACE_TRACKING", False),
             half_duplex=_bool("REACHY_HALF_DUPLEX", False),
             ambient_enabled=_bool("REACHY_AMBIENT", True),

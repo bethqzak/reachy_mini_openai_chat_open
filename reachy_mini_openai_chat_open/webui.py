@@ -7,7 +7,7 @@ settings live.
 Two tiers of settings:
   * instant   — mutate shared objects / config in place and take effect on the
                 next control-loop tick (face tracking, ambient motion,
-                half-duplex).
+                half-duplex, face detector and blur style).
   * reconnect — change the OpenAI session (voice, model, language, personality,
                 greeting); these set `app._restart` so the session reconnects
                 once with the new config. Conversation context resets, which is
@@ -23,7 +23,9 @@ written to the per-user settings file so they are still there after a restart.
 # parameter degrades into a required query param and all POSTs return 422.
 import re
 
+from .blur import STYLES
 from .config import PERSISTED_FIELDS
+from .detection import DETECTORS, RUNTIMES, available, runtime_options
 from .log import get_logger
 
 log = get_logger("webui")
@@ -84,6 +86,17 @@ def register_routes(app) -> None:
         log.warning("fastapi not importable; settings page API disabled")
         return
 
+    runtimes: list[dict] = []
+
+    def _runtimes() -> list[dict]:
+        # Probed once, on first use: what is installed can't change while the
+        # app runs, and the page polls the state every few seconds.
+        if not runtimes:
+            runtimes.extend({"name": r["name"], "note": r["note"],
+                             "available": r["available"]}
+                            for r in runtime_options())
+        return runtimes
+
     def _current_state() -> dict:
         cfg = app.cfg
         ft = app.face_tracker
@@ -102,6 +115,9 @@ def register_routes(app) -> None:
                 "ambient": cfg.ambient_enabled,
                 "half_duplex": cfg.half_duplex,
                 "camera": cfg.enable_camera,
+                "blur_style": cfg.blur_style,
+                "face_method": cfg.face_method,
+                "face_runtime": cfg.face_runtime,
                 # Read live off the speaker, not a config field — that's what
                 # lets the page tell its own echoed-back value from a stale one.
                 "speaker_volume": float(getattr(speaker, "volume", 1.0)),
@@ -117,6 +133,9 @@ def register_routes(app) -> None:
                              if len(cfg.openai_api_key) > 14 else ""),
             },
             "voices": VOICES,
+            "blur_styles": list(STYLES),
+            "face_methods": list(DETECTORS),
+            "face_runtimes": _runtimes(),
         }
 
     @sa.get("/api/state")
@@ -150,6 +169,23 @@ def register_routes(app) -> None:
         if "speaker_volume" in data and speaker is not None:
             speaker.volume = _clamp_volume(data["speaker_volume"])
             applied.append("speaker_volume")
+
+        # Face detection and blurring. Never trust the browser: a style the
+        # blur doesn't know would leave faces untouched, and a detector that
+        # can't run would block every capture, so neither is ever applied.
+        if data.get("blur_style") in STYLES:
+            cfg.blur_style = data["blur_style"]
+            applied.append("blur_style")
+        if "face_method" in data or "face_runtime" in data:
+            method = data.get("face_method", cfg.face_method)
+            runtime = data.get("face_runtime", cfg.face_runtime)
+            if (method in DETECTORS and runtime in RUNTIMES
+                    and available(method, runtime)):
+                cfg.face_method, cfg.face_runtime = method, runtime
+                if app.face_tracker is not None:
+                    app.face_tracker.method = method
+                    app.face_tracker.runtime = runtime
+                applied += [k for k in ("face_method", "face_runtime") if k in data]
 
         # --- reconnect settings ---
         for key, attr in RECONNECT_FIELDS.items():
@@ -245,7 +281,7 @@ def register_routes(app) -> None:
             return JSONResponse({"error": "camera disabled"}, status_code=503)
         from .vision import capture_jpeg
         data = capture_jpeg(media, max_width=640, quality=60,
-                            blur_faces=False, quiet=True)
+                            blur=False, quiet=True)
         if data is None:
             return JSONResponse({"error": "no frame"}, status_code=503)
         return Response(content=data, media_type="image/jpeg")

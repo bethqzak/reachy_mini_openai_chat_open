@@ -75,7 +75,8 @@ class OpenAIChatApp(ReachyMiniApp):
 
         face_tracker = None
         if cfg.enable_camera:
-            face_tracker = FaceTracker(media)
+            face_tracker = FaceTracker(media, method=cfg.face_method,
+                                       runtime=cfg.face_runtime)
             if not face_tracker.available:
                 logger.warning("OpenCV face cascade not available; face tracking disabled.")
             else:
