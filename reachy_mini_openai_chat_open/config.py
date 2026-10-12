@@ -113,9 +113,15 @@ DEFAULT_INSTRUCTIONS = (
     "naturally and often, as body language while you speak. When someone asks what "
     "you can see, what something is, or to look at something, call the `look` tool "
     "to capture an image from your camera and then describe what you actually see. "
-    "You can follow a person's face with the `set_face_tracking` tool. Never "
+    "You can follow a person's face with the `set_face_tracking` tool. When "
+    "someone asks about anything current or that you're unsure of (news, "
+    "weather, scores, prices, recent events), call the `web_search` tool; first "
+    "say a few words like \"Let me look that up\" because it takes a moment, "
+    "then answer briefly in your own words, naming a source if it gives one. Never "
     "describe these tool calls out loud; just do them as you talk."
 )
+
+DEFAULT_WEB_SEARCH_MODEL = "gpt-5-mini"
 
 DEFAULT_GREETING = (
     "Greet the user warmly in one short sentence, introduce yourself as Reachy "
@@ -192,6 +198,8 @@ class Config:
     face_runtime: str = DEFAULT_RUNTIME  # what runs it (see detection.RUNTIMES)
     enable_face_tracking: bool = False  # can be toggled at runtime by the model
     half_duplex: bool = False  # mute mic while the robot is talking (anti-echo)
+    enable_web_search: bool = True  # `web_search` tool, via the Responses API
+    web_search_model: str = DEFAULT_WEB_SEARCH_MODEL  # model that runs the search
 
     # --- Audio (robot side is 16 kHz float32; OpenAI Realtime is 24 kHz PCM16) ---
     openai_sample_rate: int = 24000
@@ -232,6 +240,9 @@ class Config:
             face_runtime=_choice("REACHY_FACE_RUNTIME", DEFAULT_RUNTIME, RUNTIMES),
             enable_face_tracking=_bool("REACHY_FACE_TRACKING", False),
             half_duplex=_bool("REACHY_HALF_DUPLEX", False),
+            enable_web_search=_bool("REACHY_WEB_SEARCH", True),
+            web_search_model=(os.environ.get("REACHY_WEB_SEARCH_MODEL", "").strip()
+                              or DEFAULT_WEB_SEARCH_MODEL),
             ambient_enabled=_bool("REACHY_AMBIENT", True),
             speaker_lead_ms=_float("REACHY_SPEAKER_LEAD_MS", 250.0),
         )

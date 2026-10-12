@@ -41,9 +41,10 @@ class OpenAIChatApp(ReachyMiniApp):
         cfg = Config.from_env()
         logger.info(
             "starting: model=%s voice=%s camera=%s face_tracking=%s ambient=%s "
-            "half_duplex=%s tools=%s key_set=%s",
+            "half_duplex=%s tools=%s web_search=%s key_set=%s",
             cfg.model, cfg.voice, cfg.enable_camera, cfg.enable_face_tracking,
             cfg.ambient_enabled, cfg.half_duplex, cfg.tools_enabled,
+            cfg.web_search_model if cfg.enable_web_search else False,
             bool(cfg.openai_api_key),
         )
 

@@ -20,7 +20,8 @@ conversation app, but swaps the brain for the **OpenAI Realtime API**
 
 This is the **open edition**: no chat logging, no telemetry, no fleet
 management. Conversations are never written to disk and never leave the robot
-(audio and camera frames go only to OpenAI, under your own key).
+(audio, camera frames and web search questions go only to OpenAI, under your
+own key).
 
 Everything that makes the robot feel alive is here:
 
@@ -29,6 +30,7 @@ Everything that makes the robot feel alive is here:
 - 🗣️ **Speech-reactive motion** — head and antennas wobble in time with its own voice.
 - 😄 **Expressive gestures & emotions** — the model moves to express itself (nod, shake, tilt, wiggle antennas, happy, excited, sad, surprised, sleepy, dance) via a function-calling tool.
 - 👀 **Camera vision / image recognition** — ask "what do you see?", "what is this?", or "read this to me" and it captures a frame and describes what's actually in front of it.
+- 🌐 **Internet lookup** — ask about the news, the weather, last night's scores or anything else current, and it searches the web (through OpenAI, under your key) and tells you what it found.
 - 🙂 **Optional face tracking** — a local OpenCV detector lets it turn its head to follow the nearest face; the model can switch it on and off.
 - 🎛️ **Settings panel in the dashboard** — a web page (served at `http://localhost:8042`) to change voice/personality, toggle behaviours live, test gestures, and watch the live transcript (kept in memory only).
 
@@ -189,6 +191,8 @@ All settings are environment variables (see `.env.example`):
 | `REACHY_FACE_RUNTIME` | `onnx-cpu` | What runs YuNet: `onnx-cpu`, `opencv`, `coreml` (macOS), `directml` (Windows), `openvino` (Windows/Linux) |
 | `REACHY_FACE_TRACKING` | `false` | Start with face-follow enabled |
 | `REACHY_AMBIENT` | `true` | Ambient breathing / idle motion |
+| `REACHY_WEB_SEARCH` | `true` | Let the model look things up on the internet (the `web_search` tool) |
+| `REACHY_WEB_SEARCH_MODEL` | `gpt-5-mini` | Responses API model that runs each search (gpt-5 and o-series models run at low reasoning effort, for speed) |
 | `REACHY_HALF_DUPLEX` | `false` | Mute mic while the robot talks (fixes echo/self-interruption) |
 | `REACHY_SPEAKER_LEAD_MS` | `250` | Speech kept buffered in the daemon while the robot talks — the most that can play on after you interrupt. Raise it if the voice stutters |
 
@@ -204,6 +208,11 @@ All settings are environment variables (see `.env.example`):
   calls the `look` tool) a single camera frame go to the **OpenAI Realtime
   API** under your own key — that's the whole point of the app. Faces in
   camera frames are pixelated locally first (`REACHY_BLUR_FACES=true`).
+- **Internet lookup:** when the model calls `web_search`, the question it
+  wrote is sent to the **OpenAI Responses API** (with `store: false`), and
+  OpenAI searches the web for it. Nothing goes to any other search service.
+  Each search is billed as a Responses call plus a web-search tool call. Set
+  `REACHY_WEB_SEARCH=false` to turn it off.
 - **Your API key** stays on the robot in a `0600` `.env` file and is never
   shown back in full by the settings page.
 
@@ -223,7 +232,8 @@ robot mic ─16kHz float─▶ resample 24kHz PCM16 ─▶ OpenAI Realtime ─�
 - `motion.py` — 50 Hz motion controller blending ambient, speech-reactive, gesture and tracking layers.
 - `audio.py` — resampling and a barge-in-capable playback queue with a live "talking energy" meter.
 - `vision.py` — camera JPEG capture (for the model) and a local OpenCV face tracker.
-- `tools.py` — the `express`, `look`, and `set_face_tracking` tools the model can call.
+- `tools.py` — the `express`, `look`, `set_face_tracking` and `web_search` tools the model can call.
+- `websearch.py` — runs a `web_search` call through the OpenAI Responses API's hosted web search.
 - `transcript.py` — the in-memory live transcript shown in the settings page.
 - `webui.py` + `static/` — the dashboard settings page (FastAPI routes on `self.settings_app`, served at `:8042`).
 - `config.py` — env / `.env` configuration, plus the settings-page values persisted to `settings.json`.

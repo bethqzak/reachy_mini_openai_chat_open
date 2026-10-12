@@ -4,7 +4,7 @@ Speaks the GA Realtime WebSocket protocol:
   * streams robot microphone audio up as PCM16
   * plays the model's PCM16 speech back through the robot speaker
   * uses server-side VAD for natural turn-taking + barge-in
-  * dispatches function calls to robot motion / camera tools
+  * dispatches function calls to robot motion / camera / web search tools
   * injects camera frames as image input for "what do you see?" requests
 
 Runs entirely inside one asyncio event loop (started from a worker thread by
@@ -21,7 +21,7 @@ import time
 import websockets
 
 from .log import get_logger, throttle
-from .tools import ToolContext, dispatch, tool_schemas
+from .tools import SLOW_TOOLS, ToolContext, dispatch, tool_schemas
 
 logger = get_logger("realtime")
 
@@ -99,6 +99,10 @@ class OpenAIRealtimeClient:
         self._mic_open = asyncio.Event()
         self._pending_calls: dict[str, str] = {}  # call_id -> name
         self._handled: set[str] = set()  # call_ids already executed
+        # Slow tools (web search) running in the background, and whether one
+        # finished while a reply was still going and needs a turn of its own.
+        self._tool_tasks: set[asyncio.Task] = set()
+        self._continue_pending = False
         # Replies cut short by a barge-in: item_id -> ms actually heard, so
         # the logged transcript can be trimmed to match. Small ring buffer.
         self._truncated: dict[str, int] = {}
@@ -143,6 +147,7 @@ class OpenAIRealtimeClient:
                     break
                 await asyncio.sleep(0.2)
         finally:
+            tasks += self._tool_tasks
             for t in tasks:  # also runs if _configure/_greet raised
                 t.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -191,7 +196,8 @@ class OpenAIRealtimeClient:
             },
         }
         if self.cfg.tools_enabled:
-            session["tools"] = tool_schemas(self.cfg.enable_camera)
+            session["tools"] = tool_schemas(self.cfg.enable_camera,
+                                            self.cfg.enable_web_search)
             session["tool_choice"] = "auto"
         logger.debug("sending session.update (voice=%s, %d tools)",
                      self.cfg.voice, len(session.get("tools", [])))
@@ -372,6 +378,10 @@ class OpenAIRealtimeClient:
                     cid = item.get("call_id")
                     if cid and cid not in self._handled:
                         await self._run_tool(item.get("name"), item.get("arguments", "{}"), cid)
+            if self._continue_pending:
+                # A slow tool's result landed mid-reply; answer with it now.
+                self._continue_pending = False
+                await self._continue_turn("web search")
             return
 
         if etype == "response.output_item.added":
@@ -458,13 +468,34 @@ class OpenAIRealtimeClient:
         if not call_id or call_id in self._handled:
             return
         self._handled.add(call_id)
+        if name not in SLOW_TOOLS:
+            await self._execute_tool(name, arguments, call_id)
+            return
+        # Awaiting a web search here would stall the receive loop, and with it
+        # the "let me look that up" audio and barge-in, for seconds.
+        task = asyncio.create_task(self._execute_tool(name, arguments, call_id))
+        self._tool_tasks.add(task)
+        task.add_done_callback(self._tool_done)
+
+    def _tool_done(self, task: asyncio.Task) -> None:
+        self._tool_tasks.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            logger.warning("background tool failed: %s", task.exception())
+
+    async def _execute_tool(self, name: str, arguments: str, call_id: str) -> None:
         try:
             args = json.loads(arguments) if arguments else {}
         except Exception:
             logger.warning("tool %s: could not parse arguments %r", name, arguments)
             args = {}
+        slow = name in SLOW_TOOLS
         try:
-            output, image_uri = dispatch(name, args, self.ctx)
+            if slow:
+                loop = asyncio.get_running_loop()
+                output, image_uri = await loop.run_in_executor(
+                    None, dispatch, name, args, self.ctx)
+            else:
+                output, image_uri = dispatch(name, args, self.ctx)
         except Exception:
             logger.exception("tool %s crashed", name)
             output, image_uri = ('{"ok": false, "error": "tool crashed"}', None)
@@ -488,7 +519,15 @@ class OpenAIRealtimeClient:
                     "content": [{"type": "input_image", "image_url": image_uri}],
                 },
             })
-        # Continue the turn.
+        # Continue the turn. A slow result can come back while a reply is
+        # still playing (its own filler line, or the user moved on); starting a
+        # second response then would be refused, so wait for response.done.
+        if slow and self._response_active:
+            self._continue_pending = True
+            return
+        await self._continue_turn(name)
+
+    async def _continue_turn(self, name: str) -> None:
         try:
             await self._send({"type": "response.create"})
         except Exception as e:

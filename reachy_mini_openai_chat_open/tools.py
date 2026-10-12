@@ -9,9 +9,15 @@ from __future__ import annotations
 
 from .motion import AVAILABLE_EXPRESSIONS
 from .vision import capture_jpeg_data_uri
+from .websearch import search
+
+# Tools that can take seconds (network calls). The realtime client runs these
+# off its event loop so speech, the mic and barge-in keep working meanwhile.
+SLOW_TOOLS = {"web_search"}
 
 
-def tool_schemas(enable_camera: bool = True) -> list[dict]:
+def tool_schemas(enable_camera: bool = True,
+                 enable_web_search: bool = True) -> list[dict]:
     schemas = [
         {
             "type": "function",
@@ -60,6 +66,33 @@ def tool_schemas(enable_camera: bool = True) -> list[dict]:
                     "an object. After looking, describe what you actually see."
                 ),
                 "parameters": {"type": "object", "properties": {}},
+            }
+        )
+    if enable_web_search:
+        schemas.append(
+            {
+                "type": "function",
+                "name": "web_search",
+                "description": (
+                    "Look something up on the internet. Use it for anything "
+                    "current or that may have changed: news, weather, sports "
+                    "results, prices, opening hours, recent events, or facts "
+                    "you are not sure of. Don't use it for things you already "
+                    "know well. Takes a few seconds."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": (
+                                "A complete, self-contained search question, "
+                                "including any place or date the user meant."
+                            ),
+                        }
+                    },
+                    "required": ["query"],
+                },
             }
         )
     return schemas
@@ -111,5 +144,14 @@ def dispatch(name: str, args: dict, ctx: ToolContext) -> tuple[str, str | None]:
         # Nudge a little "looking" gesture for liveliness.
         ctx.motion.trigger("look_around")
         return ('{"ok": true, "status": "captured"}', uri)
+
+    if name == "web_search":
+        if not ctx.config.enable_web_search:
+            return ('{"ok": false, "error": "web search disabled"}', None)
+        # A "thinking" tilt so the wait reads as the robot looking it up.
+        ctx.motion.trigger("tilt_head")
+        cfg = ctx.config
+        return (search(str(args.get("query", "")), cfg.openai_api_key,
+                       cfg.web_search_model), None)
 
     return (f'{{"ok": false, "error": "unknown tool {name!r}"}}', None)
