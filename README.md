@@ -182,6 +182,10 @@ All settings are environment variables (see `.env.example`):
 | `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Realtime model (overridden by a value saved on the settings page). The bare `gpt-realtime` alias retires on 20 Jan 2027 |
 | `OPENAI_REALTIME_VOICE` | `marin` | Voice (marin, cedar, alloy, echo, shimmer, …) |
 | `OPENAI_TRANSCRIPTION_MODEL` | `gpt-transcribe` | Transcribes what *you* say for the live transcript (`gpt-transcribe` or `gpt-live-transcribe`; `whisper-1` is being retired). Empty turns user transcription off |
+| `REACHY_TURN_DETECTION` | `semantic_vad` | How the end of your turn is detected: `semantic_vad` (waits for a finished thought) or `server_vad` (600 ms of silence) |
+| `REACHY_VAD_EAGERNESS` | `auto` | `semantic_vad` only: `low` waits longest before replying, `high` replies soonest |
+| `REACHY_NOISE_REDUCTION` | `far_field` | Noise reduction on the mic: `far_field`, `near_field` or `off` |
+| `REACHY_NAME_SOUNDALIKES` | `Ritchie, Richie, Ricky, Reechy, Peachy, Reach` | Mishearings of "Reachy": written as Reachy in the transcript and understood as the robot's name. Empty turns it off |
 | `REACHY_INSTRUCTIONS` | built-in | System prompt / personality (overridden by a value saved on the settings page) |
 | `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes (same override) |
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |

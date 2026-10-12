@@ -6,6 +6,7 @@ const GESTURES = ["nod_yes", "shake_no", "tilt_head", "wiggle_antennas",
 
 let loaded = false;
 let stateFails = 0;
+let cacheBuilding = false; // the app's first start is building GStreamer's cache
 
 function toast(msg) {
   const t = $("toast");
@@ -72,6 +73,10 @@ async function loadState() {
     data = await api("/api/state");
   } catch (e) {
     stateFails++;
+    if (stateFails >= 2) {
+      try { cacheBuilding = !!(await api("/api/boot")).gst_cache_building; }
+      catch (_) { cacheBuilding = false; }
+    }
     setStatus(null);
     return;
   }
@@ -87,14 +92,6 @@ async function loadState() {
       vsel.appendChild(o);
     });
   }
-
-  // detection / blur dropdowns
-  fillSelect("blur_style", data.blur_styles);
-  fillSelect("face_method", data.face_methods);
-  fillSelect("face_runtime", data.face_runtimes);
-  setSelect("blur_style", s.blur_style);
-  setSelect("face_method", s.face_method);
-  setSelect("face_runtime", s.face_runtime);
 
   // Only overwrite fields the user isn't editing right now.
   setToggle("face_tracking", s.face_tracking);
@@ -139,45 +136,6 @@ function setToggle(id, val) {
   if (el && document.activeElement !== el) el.checked = !!val;
 }
 
-// ---- instant dropdowns ----
-// Options come from the server as plain names, or as {name, note, available}
-// where something on the list may not be installed on this robot.
-function fillSelect(id, options) {
-  const el = $(id);
-  if (el.options.length > 0) return;
-  (options || []).forEach((opt) => {
-    const o = document.createElement("option");
-    const name = typeof opt === "string" ? opt : opt.name;
-    o.value = name; o.textContent = name;
-    if (typeof opt !== "string") {
-      o.title = opt.note || "";
-      if (!opt.available) { o.disabled = true; o.textContent += " (unavailable)"; }
-    }
-    el.appendChild(o);
-  });
-}
-
-function setSelect(id, val) {
-  const el = $(id);
-  if (!el || document.activeElement === el) return;
-  if (settled(id, val)) el.value = val;
-}
-
-function wireSelect(id) {
-  $(id).addEventListener("change", async (e) => {
-    const r = await postSetting(id, e.target.value);
-    if (!r) return;                       // postSetting already said it failed
-    if ((r.applied || []).includes(id)) {
-      toast("Updated: " + id.replace("_", " "));
-    } else {
-      // Refused (that combination can't run here): show what is really set.
-      pending.delete(id);
-      toast("Not available on this robot");
-      loadState();
-    }
-  });
-}
-
 // ---- sliders ----
 // The UI works in percent, the backend in a plain multiplier.
 function showPct(valId, pct) {
@@ -220,7 +178,11 @@ function setStatus(connected, keySet, error) {
     // Don't flash the failure message on a single missed poll (e.g. while
     // the app is still starting) — keep the loading state for the first two.
     if (stateFails < 2) { dot.className = "dot wait"; txt.textContent = "connecting…"; return; }
-    dot.className = "dot off"; txt.textContent = "settings server only — app not running"; return;
+    dot.className = "dot off";
+    txt.textContent = cacheBuilding
+      ? "settings server only — app cache is building on first boot"
+      : "settings server only — app not running";
+    return;
   }
   if (keySet === false) { dot.className = "dot off"; txt.textContent = "waiting for API key"; return; }
   if (connected) { dot.className = "dot on"; txt.textContent = "connected to OpenAI"; return; }
@@ -430,7 +392,6 @@ function escapeHtml(s) {
 
 // ---- boot ----
 ["face_tracking", "ambient", "half_duplex"].forEach(wireToggle);
-["blur_style", "face_method", "face_runtime"].forEach(wireSelect);
 wireSlider("speaker_volume", "speaker_volume", "volVal");
 $("save").addEventListener("click", save);
 $("saveKey").addEventListener("click", saveKey);

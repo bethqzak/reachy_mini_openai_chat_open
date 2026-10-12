@@ -128,8 +128,6 @@ DEFAULT_GREETING = (
     "Mini, and give a little antenna wiggle."
 )
 
-# Config fields the settings page may persist across restarts. Add a name here
-# and it is saved and restored automatically — nothing else needs to change.
 # Realtime speech-to-speech model. OpenAI's deprecation table maps the bare
 # `gpt-realtime` alias to `gpt-realtime-2.1` with a 20 Jan 2027 shutdown, so
 # the default follows the versioned alias. Override with OPENAI_REALTIME_MODEL.
@@ -144,6 +142,24 @@ DEFAULT_MODEL = "gpt-realtime-2.1"
 # OPENAI_TRANSCRIPTION_MODEL; an empty value turns user transcription off.
 DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe"
 
+# How the server decides the user has finished a turn. semantic_vad judges
+# from the words whether they're done, so a child pausing mid-sentence isn't
+# cut off; server_vad is the older fixed-silence (600 ms) detector.
+TURN_DETECTION = ("semantic_vad", "server_vad")
+VAD_EAGERNESS = ("auto", "low", "medium", "high")  # semantic_vad only
+
+# Server-side noise reduction on the mic audio, before the model and the
+# transcriber hear it. far_field suits a desk robot a metre or more away;
+# near_field is for a headset-style close mic.
+NOISE_REDUCTION = ("far_field", "near_field", "off")
+
+# What Reachy's name tends to be misheard as, especially from children. The
+# transcriber is told to spell these "Reachy" and the model is told they mean
+# it. Empty turns the hint off.
+DEFAULT_NAME_SOUNDALIKES = "Ritchie, Richie, Ricky, Reechy, Peachy, Reach"
+
+# Config fields the settings page may persist across restarts. Add a name here
+# and it is saved and restored automatically — nothing else needs to change.
 PERSISTED_FIELDS = ("instructions", "greeting", "model")
 
 SETTINGS_FILE = "settings.json"
@@ -211,6 +227,12 @@ class Config:
     transcription_model: str = DEFAULT_TRANSCRIPTION_MODEL
     transcription_language: str = "en"
 
+    # --- Hearing ---
+    turn_detection: str = "semantic_vad"  # see TURN_DETECTION
+    vad_eagerness: str = "auto"  # see VAD_EAGERNESS
+    noise_reduction: str = "far_field"  # see NOISE_REDUCTION
+    name_soundalikes: str = DEFAULT_NAME_SOUNDALIKES  # misheard forms of "Reachy"
+
     # --- Behaviour ---
     enable_camera: bool = True
     blur_faces: bool = True  # pixelate faces before a camera image leaves the robot
@@ -256,6 +278,13 @@ class Config:
             transcription_model=os.environ.get(
                 "OPENAI_TRANSCRIPTION_MODEL", DEFAULT_TRANSCRIPTION_MODEL).strip(),
             transcription_language=os.environ.get("REACHY_LANGUAGE", "en"),
+            turn_detection=_choice("REACHY_TURN_DETECTION", "semantic_vad",
+                                   TURN_DETECTION),
+            vad_eagerness=_choice("REACHY_VAD_EAGERNESS", "auto", VAD_EAGERNESS),
+            noise_reduction=_choice("REACHY_NOISE_REDUCTION", "far_field",
+                                    NOISE_REDUCTION),
+            name_soundalikes=os.environ.get("REACHY_NAME_SOUNDALIKES",
+                                            DEFAULT_NAME_SOUNDALIKES).strip(),
             enable_camera=_bool("REACHY_ENABLE_CAMERA", True),
             blur_faces=_bool("REACHY_BLUR_FACES", True),
             blur_style=_choice("REACHY_BLUR_STYLE", DEFAULT_STYLE, STYLES),

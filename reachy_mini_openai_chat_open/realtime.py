@@ -77,6 +77,43 @@ def _api_error_reason(err: dict) -> str:
     return f"OpenAI rejected the session: {msg}"
 
 
+def _turn_detection(cfg) -> dict:
+    """End-of-turn detector for session.update (REACHY_TURN_DETECTION)."""
+    if cfg.turn_detection == "server_vad":
+        return {"type": "server_vad", "threshold": 0.5,
+                "prefix_padding_ms": 300, "silence_duration_ms": 600,
+                "create_response": True, "interrupt_response": True}
+    return {"type": "semantic_vad", "eagerness": cfg.vad_eagerness,
+            "create_response": True, "interrupt_response": True}
+
+
+def _transcription_prompt(cfg) -> str:
+    """Context for the transcriber: who's talking, and words to spell right.
+
+    Only the transcript uses this. The model hears the audio itself and gets
+    its own hint from _name_hint.
+    """
+    parts = []
+    if cfg.name_soundalikes:
+        parts.append(
+            "Someone, often a child, is talking to a small robot called "
+            "Reachy (Reachy Mini). When they say a word that sounds like "
+            f"{cfg.name_soundalikes} and are talking to or about the robot, "
+            "write it as Reachy.")
+    return " ".join(parts)
+
+
+def _name_hint(cfg) -> str:
+    """Appended to the instructions, so it holds for a personality saved on
+    the settings page too."""
+    if not cfg.name_soundalikes:
+        return ""
+    return ("\n\nYour name is often misheard, especially by children: if "
+            f"someone says {cfg.name_soundalikes} or similar, they almost "
+            "certainly mean you, Reachy, unless it is plainly another person's "
+            "name. Never correct how they say it.")
+
+
 class OpenAIRealtimeClient:
     def __init__(self, config, mic_reader, speaker, tool_ctx: ToolContext,
                  logger=None, runtime=None, restart_event=None):
@@ -172,14 +209,9 @@ class OpenAIRealtimeClient:
     async def _configure(self) -> None:
         audio_input = {
             "format": {"type": "audio/pcm", "rate": self.cfg.openai_sample_rate},
-            "turn_detection": {
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 600,
-                "create_response": True,
-                "interrupt_response": True,
-            },
+            "turn_detection": _turn_detection(self.cfg),
+            "noise_reduction": (None if self.cfg.noise_reduction == "off"
+                                else {"type": self.cfg.noise_reduction}),
         }
         # User-side transcription only feeds the live transcript on the
         # settings page; the model hears the audio either way. The model name
@@ -192,11 +224,14 @@ class OpenAIRealtimeClient:
                 "model": self.cfg.transcription_model,
                 "language": self.cfg.transcription_language,
             }
+            prompt = _transcription_prompt(self.cfg)
+            if prompt:
+                audio_input["transcription"]["prompt"] = prompt
         session = {
             "type": "realtime",
             "model": self.cfg.model,
             "output_modalities": ["audio"],
-            "instructions": self.cfg.instructions,
+            "instructions": self.cfg.instructions + _name_hint(self.cfg),
             "audio": {
                 "input": audio_input,
                 "output": {

@@ -15,6 +15,7 @@ Entry point (see pyproject.toml):
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 
@@ -36,6 +37,14 @@ class OpenAIChatApp(ReachyMiniApp):
     # Settings page served from static/ and embedded in the dashboard.
     # Reachable at http://localhost:8042 (Lite) once the app is running.
     custom_app_url: str | None = "http://0.0.0.0:8042"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        # The rest of the API only exists once run() starts; this one answers
+        # while the SDK is still starting, so the page can say why it's slow.
+        if self.settings_app is not None:
+            self.settings_app.get("/api/boot")(
+                lambda: {"gst_cache_building": _gst_cache_building()})
 
     def run(self, reachy_mini: ReachyMini, stop_event: threading.Event) -> None:
         cfg = Config.from_env()
@@ -162,6 +171,24 @@ class OpenAIChatApp(ReachyMiniApp):
             except Exception:
                 logger.exception("error while stopping audio")
             logger.info("shutdown complete.")
+
+
+def _gst_cache_building() -> bool:
+    """True while the SDK's first start in a fresh venv builds GStreamer's
+    plugin cache (macOS/Windows, where the cache lives in the venv): it is
+    missing, or older than a plugin after an install or update."""
+    registry = os.environ.get("GST_REGISTRY_1_0")
+    if not registry:  # Linux: system GStreamer with a shared cache
+        return False
+    try:
+        built = os.path.getmtime(registry)
+    except OSError:
+        return True
+    for d in os.environ.get("GST_PLUGIN_SYSTEM_PATH_1_0", "").split(os.pathsep):
+        if os.path.isdir(d) and any(os.path.getmtime(os.path.join(d, f)) > built
+                                    for f in os.listdir(d)):
+            return True
+    return False
 
 
 def _safe_rate(media, method: str, default: int) -> int:

@@ -105,31 +105,13 @@
         <button type="button" id="camToggle" class="icon" title="Pause live view">⏸</button>
       </div>
       <p class="hint">What the robot sees right now. Streamed only to this page —
-        nothing is saved or uploaded, and faces are not blurred here.</p>
+        nothing is saved or uploaded.</p>
       <div class="cam">
         <img id="cam" alt="live camera view" />
         <div id="camNote" class="cam-note">Starting camera…</div>
       </div>
     </section>
 
-    <!-- Face blurring -->
-    <section class="card">
-      <h2>Face blurring</h2>
-      <p class="hint">How faces are hidden in camera frames sent to OpenAI. Applies
-        instantly and resets to the <code>.env</code> values when the app restarts.</p>
-      <div class="row">
-        <label for="blur_style">Blur style</label>
-        <select id="blur_style"></select>
-      </div>
-      <div class="row">
-        <label for="face_method">Face detector</label>
-        <select id="face_method"></select>
-      </div>
-      <div class="row">
-        <label for="face_runtime">Detector runtime <em>(YuNet only)</em></label>
-        <select id="face_runtime"></select>
-      </div>
-    </section>
 
     <!-- Test movement -->
     <section class="card">
