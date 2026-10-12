@@ -165,25 +165,35 @@ class OpenAIRealtimeClient:
 
     # ------------------------------------------------------------------ #
     async def _configure(self) -> None:
+        audio_input = {
+            "format": {"type": "audio/pcm", "rate": self.cfg.openai_sample_rate},
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 600,
+                "create_response": True,
+                "interrupt_response": True,
+            },
+        }
+        # User-side transcription only feeds the live transcript on the
+        # settings page; the model hears the audio either way. The model name
+        # is configurable because OpenAI is retiring `whisper-1` here, and an
+        # empty value leaves transcription off rather than sending a name the
+        # server may reject (which would surface as an `error` event and no
+        # user lines in the transcript).
+        if self.cfg.transcription_model:
+            audio_input["transcription"] = {
+                "model": self.cfg.transcription_model,
+                "language": self.cfg.transcription_language,
+            }
         session = {
             "type": "realtime",
             "model": self.cfg.model,
             "output_modalities": ["audio"],
             "instructions": self.cfg.instructions,
             "audio": {
-                "input": {
-                    "format": {"type": "audio/pcm", "rate": self.cfg.openai_sample_rate},
-                    "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 600,
-                        "create_response": True,
-                        "interrupt_response": True,
-                    },
-                    "transcription": {"model": "whisper-1",
-                                      "language": self.cfg.transcription_language},
-                },
+                "input": audio_input,
                 "output": {
                     "format": {"type": "audio/pcm", "rate": self.cfg.openai_sample_rate},
                     "voice": self.cfg.voice,

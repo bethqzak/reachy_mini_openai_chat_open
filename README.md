@@ -16,7 +16,7 @@ tags:
 Talk with your **Reachy Mini** using **your own OpenAI key**. This is a lean,
 standalone Reachy Mini app that reproduces the feel of the official
 conversation app, but swaps the brain for the **OpenAI Realtime API**
-(`gpt-realtime`) — voice in, voice out, over a single low-latency WebSocket.
+(`gpt-realtime-2.1`) — voice in, voice out, over a single low-latency WebSocket.
 
 This is the **open edition**: no chat logging, no telemetry, no fleet
 management. Conversations are never written to disk and never leave the robot
@@ -38,7 +38,7 @@ You pay OpenAI directly for usage. Apache-2.0 licensed.
 
 ## Design decisions
 
-- **OpenAI Realtime API, not a pipeline.** The brain is the `gpt-realtime` speech-to-speech model over a single WebSocket — chosen over a Whisper → GPT → TTS pipeline for the lowest latency, native tool-calling to drive movement, and built-in image input for vision. It's the closest match to the official app's live feel.
+- **OpenAI Realtime API, not a pipeline.** The brain is the `gpt-realtime-2.1` speech-to-speech model over a single WebSocket — chosen over a Whisper → GPT → TTS pipeline for the lowest latency, native tool-calling to drive movement, and built-in image input for vision. It's the closest match to the official app's live feel.
 - **Lean standalone app, not a fork.** Rather than forking the official conversation app, this is a clean, dependency-light build. Gestures and emotions are procedural (no external motion libraries to download), which keeps it easy to read and modify.
 - **Nothing is recorded.** The live transcript in the settings page is a small in-memory buffer that vanishes when the app stops. No files, no uploads, no analytics. Faces are pixelated locally before a camera frame is sent to OpenAI (`REACHY_BLUR_FACES=true` by default).
 - **Dashboard settings panel.** A small web UI is served so voice, personality, behaviours, gesture tests and the live transcript are all adjustable without editing files. See [Settings page](#settings-page-in-the-dashboard).
@@ -53,7 +53,7 @@ You pay OpenAI directly for usage. Apache-2.0 licensed.
 - Python 3.11+ (`reachy-mini` 1.9 and later require it; 3.10 works only with `reachy-mini` 1.8.4).
 
 Daemon 1.8.4 through 1.11 are supported (last verified against `reachy-mini`
-1.11.0, released 21 Sept 2026). Intel Macs top out
+1.11.0, released 11 Sept 2026). Intel Macs top out
 at 1.8.4 because `reachy-mini` 1.9 and later hard-require `onnxruntime==1.27.0`,
 which has no x86_64 macOS wheels; this app sets no upper bound, so pip resolves
 1.8.4 there and the SDK calls it makes are identical. Daemon 1.11 dropped
@@ -177,8 +177,9 @@ All settings are environment variables (see `.env.example`):
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENAI_API_KEY` | *(required)* | Your OpenAI key |
-| `OPENAI_REALTIME_MODEL` | `gpt-realtime` | Realtime model (overridden by a value saved on the settings page) |
+| `OPENAI_REALTIME_MODEL` | `gpt-realtime-2.1` | Realtime model (overridden by a value saved on the settings page). The bare `gpt-realtime` alias retires on 20 Jan 2027 |
 | `OPENAI_REALTIME_VOICE` | `marin` | Voice (marin, cedar, alloy, echo, shimmer, …) |
+| `OPENAI_TRANSCRIPTION_MODEL` | `gpt-transcribe` | Transcribes what *you* say for the live transcript (`gpt-transcribe` or `gpt-live-transcribe`; `whisper-1` is being retired). Empty turns user transcription off |
 | `REACHY_INSTRUCTIONS` | built-in | System prompt / personality (overridden by a value saved on the settings page) |
 | `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes (same override) |
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |
@@ -252,5 +253,6 @@ makes it show up as an installable Reachy Mini app — keep it. Only the
 
 - **Echo / the robot interrupts itself:** the robot mic has hardware echo cancellation, so usually you need nothing. If it still happens, set `REACHY_HALF_DUPLEX=true`.
 - **No camera vision:** ensure `opencv-python` is installed and the media backend has a camera; set `REACHY_ENABLE_CAMERA=true`.
-- **Model name changes:** if OpenAI retires the `gpt-realtime` alias, set `OPENAI_REALTIME_MODEL` in your `.env` — no code change needed.
+- **Model name changes:** the default is the `gpt-realtime-2.1` alias. If you saved `gpt-realtime` on the settings page before, that saved value still wins until you pick a newer one there; OpenAI retires the bare alias on 20 Jan 2027. Any future rename is a `.env` change (`OPENAI_REALTIME_MODEL`), not a code change.
+- **No user lines in the live transcript:** the transcription model was rejected (an `API error` with "not supported in realtime mode" in the log). Set `OPENAI_TRANSCRIPTION_MODEL` to another listed model, or empty to disable.
 - **Costs:** the Realtime API bills for audio in/out and any image frames sent — usage is on your OpenAI account.
