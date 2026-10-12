@@ -3,7 +3,8 @@
 A single thread streams targets to the robot at ~50 Hz, blending several
 layers so the robot always feels alive:
 
-  * ambient  : slow "breathing" bob + tiny idle drift (always on)
+  * ambient  : slow "breathing" bob + idle drift, and an occasional
+               antenna flick
   * talking  : antenna + head wobble driven by live speech energy
   * tracking  : head turns toward a detected face (when enabled)
   * gestures : one-shot expressive moves (nod, shake, wiggle, emotions, dance)
@@ -11,13 +12,15 @@ layers so the robot always feels alive:
 
 Every layer produces small additive offsets in a common unit set
 (degrees for angles, mm for height, radians for body_yaw / antennas) which are
-summed, clamped to safe ranges, and sent with `set_target`.
+summed, clamped to safe ranges, and sent with `set_target`. Antenna offsets
+are relative to the SDK's neutral pose: resting straight up, they buzz.
 """
 
 from __future__ import annotations
 
 import inspect
 import math
+import random
 import threading
 import time
 
@@ -173,6 +176,28 @@ def _gesture(name: str):
     return table.get(name)
 
 
+def _idle_flick():
+    """A random out-and-back antenna move for ambient motion.
+
+    Brisk on purpose: a slow continuous sway steps the target by less than
+    one encoder tick per frame, and the servos stick and hunt.
+    """
+    dur = random.uniform(1.2, 1.8)
+    amp = random.choice((-1, 1)) * random.uniform(0.12, 0.25)  # 7-14°
+    side = random.choice(("both", "left", "right"))
+    dl = amp if side != "right" else 0.0
+    dr = -amp if side != "left" else 0.0  # mirrored, like the neutral pose
+
+    def flick(t):
+        o = _zero()
+        e = _env(t, dur)
+        o["ant_l"] = dl * e
+        o["ant_r"] = dr * e
+        return o
+
+    return dur, flick
+
+
 AVAILABLE_EXPRESSIONS = [
     "nod_yes", "shake_no", "tilt_head", "look_around", "wiggle_antennas",
     "happy", "excited", "sad", "surprised", "confused", "sleepy", "dance",
@@ -197,6 +222,7 @@ class MotionController(threading.Thread):
         # smoothed tracking state
         self._track_yaw = 0.0
         self._track_pitch = 0.0
+        self._next_flick = 0.0
 
         # Detect create_head_pose kwargs once (degrees / mm support varies).
         self._pose_kwargs = {}
@@ -301,15 +327,18 @@ class MotionController(threading.Thread):
             t = now - t0
 
             yaw = pitch = roll = zmm = body = 0.0
-            ant_l = ant_r = 0.0
+            ant_l, ant_r = _NEUTRAL_ANTENNAS
 
-            # 1) ambient breathing
+            # 1) ambient breathing + antenna flicks
             if self.cfg.ambient_enabled:
                 zmm += 3.5 * math.sin(2 * math.pi * 0.22 * t)
                 pitch += 1.5 * math.sin(2 * math.pi * 0.22 * t + 0.6)
                 yaw += 2.5 * math.sin(2 * math.pi * 0.05 * t)
-                ant_l += 0.05 * math.sin(2 * math.pi * 0.18 * t)
-                ant_r += 0.05 * math.sin(2 * math.pi * 0.18 * t + 0.3)
+                if now >= self._next_flick:
+                    dur, fn = _idle_flick()
+                    with self._glock:
+                        self._gestures.append((now, dur, fn))
+                    self._next_flick = now + dur + random.uniform(2.0, 5.0)
 
             # 2) talking wobble
             energy = self.speaker.talking_energy if self.speaker else 0.0
