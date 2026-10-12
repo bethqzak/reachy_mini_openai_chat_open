@@ -130,6 +130,20 @@ DEFAULT_GREETING = (
 
 # Config fields the settings page may persist across restarts. Add a name here
 # and it is saved and restored automatically — nothing else needs to change.
+# Realtime speech-to-speech model. OpenAI's deprecation table maps the bare
+# `gpt-realtime` alias to `gpt-realtime-2.1` with a 20 Jan 2027 shutdown, so
+# the default follows the versioned alias. Override with OPENAI_REALTIME_MODEL.
+DEFAULT_MODEL = "gpt-realtime-2.1"
+
+# Model used for the *user's* side of the live transcript, set on the
+# conversation session as audio.input.transcription.model. `whisper-1` is the
+# retiring option (shutdown 26 Feb 2027; already refused on some accounts).
+# `gpt-transcribe` is the listed replacement that works on committed turns,
+# which is what server_vad produces; `gpt-live-transcribe` streams deltas but
+# is documented as not supporting server_vad. Override with
+# OPENAI_TRANSCRIPTION_MODEL; an empty value turns user transcription off.
+DEFAULT_TRANSCRIPTION_MODEL = "gpt-transcribe"
+
 PERSISTED_FIELDS = ("instructions", "greeting", "model")
 
 SETTINGS_FILE = "settings.json"
@@ -183,11 +197,18 @@ class Config:
     openai_api_key: str = ""
 
     # --- Model / voice ---
-    model: str = "gpt-realtime"
+    # The bare `gpt-realtime` alias is scheduled for shutdown on 20 Jan 2027
+    # (replacement: gpt-realtime-2.1), so the default tracks the 2.1 alias.
+    model: str = DEFAULT_MODEL
     voice: str = "marin"
     instructions: str = DEFAULT_INSTRUCTIONS
     greeting: str = DEFAULT_GREETING
     greet_on_start: bool = True
+    # Model that transcribes what the *user* says, for the live transcript.
+    # `whisper-1` (the old hardcoded value) is being retired from the Realtime
+    # API (shutdown 26 Feb 2027) and some accounts already get "not supported
+    # in realtime mode". Empty string disables user transcription entirely.
+    transcription_model: str = DEFAULT_TRANSCRIPTION_MODEL
     transcription_language: str = "en"
 
     # --- Behaviour ---
@@ -227,11 +248,13 @@ class Config:
             logger.info("no .env file found; using environment/defaults only")
         cfg = cls(
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-            model=os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime"),
+            model=os.environ.get("OPENAI_REALTIME_MODEL", DEFAULT_MODEL),
             voice=os.environ.get("OPENAI_REALTIME_VOICE", "marin"),
             instructions=os.environ.get("REACHY_INSTRUCTIONS", DEFAULT_INSTRUCTIONS),
             greeting=os.environ.get("REACHY_GREETING", DEFAULT_GREETING),
             greet_on_start=_bool("REACHY_GREET_ON_START", True),
+            transcription_model=os.environ.get(
+                "OPENAI_TRANSCRIPTION_MODEL", DEFAULT_TRANSCRIPTION_MODEL).strip(),
             transcription_language=os.environ.get("REACHY_LANGUAGE", "en"),
             enable_camera=_bool("REACHY_ENABLE_CAMERA", True),
             blur_faces=_bool("REACHY_BLUR_FACES", True),
