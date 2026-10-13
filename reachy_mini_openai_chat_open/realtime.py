@@ -87,6 +87,22 @@ def _turn_detection(cfg) -> dict:
             "create_response": True, "interrupt_response": True}
 
 
+def _transcription_prompt(cfg) -> str:
+    """Context for the transcriber: who's talking, and words to spell right.
+
+    Only the transcript uses this. The model hears the audio itself and gets
+    its own hint from _name_hint.
+    """
+    parts = []
+    if cfg.name_soundalikes:
+        parts.append(
+            "Someone, often a child, is talking to a small robot called "
+            "Reachy (Reachy Mini). When they say a word that sounds like "
+            f"{cfg.name_soundalikes} and are talking to or about the robot, "
+            "write it as Reachy.")
+    return " ".join(parts)
+
+
 def _name_hint(cfg) -> str:
     """Appended to the instructions, so it holds for a personality saved on
     the settings page too."""
@@ -202,14 +218,15 @@ class OpenAIRealtimeClient:
         # is configurable because OpenAI is retiring `whisper-1` here, and an
         # empty value leaves transcription off rather than sending a name the
         # server may reject (which would surface as an `error` event and no
-        # user lines in the transcript). Deliberately no `prompt`: the
-        # transcriber echoes it back as the "transcript" on short or quiet
-        # turns. The soundalike hint goes to the model instead (_name_hint).
+        # user lines in the transcript).
         if self.cfg.transcription_model:
             audio_input["transcription"] = {
                 "model": self.cfg.transcription_model,
                 "language": self.cfg.transcription_language,
             }
+            prompt = _transcription_prompt(self.cfg)
+            if prompt:
+                audio_input["transcription"]["prompt"] = prompt
         session = {
             "type": "realtime",
             "model": self.cfg.model,

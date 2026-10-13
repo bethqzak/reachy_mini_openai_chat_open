@@ -154,9 +154,8 @@ VAD_EAGERNESS = ("auto", "low", "medium", "high")  # semantic_vad only
 NOISE_REDUCTION = ("far_field", "near_field", "off")
 
 # What Reachy's name tends to be misheard as, especially from children. The
-# model is told they mean it (see realtime._name_hint). The transcriber is
-# deliberately not prompted: it echoes a prompt back as the transcript on
-# short or quiet turns. Empty turns the hint off.
+# transcriber is told to spell these "Reachy" and the model is told they mean
+# it. Empty turns the hint off.
 DEFAULT_NAME_SOUNDALIKES = "Ritchie, Richie, Ricky, Reechy, Peachy, Reach"
 
 # Config fields the settings page may persist across restarts. Add a name here
