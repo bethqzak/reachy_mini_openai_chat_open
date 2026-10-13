@@ -46,16 +46,17 @@ def pixelate_faces_bgr(bgr: np.ndarray, method: str = DEFAULT_METHOD,
     return None if faces is None else blur_faces(bgr, faces, style)
 
 
-def capture_jpeg(media, max_width: int = 768, quality: int = 70,
-                 blur: bool = True, quiet: bool = False,
-                 method: str = DEFAULT_METHOD, runtime: str = DEFAULT_RUNTIME,
-                 style: str = DEFAULT_STYLE) -> bytes | None:
-    """Grab one camera frame and return it as JPEG bytes.
+def capture_jpeg_bytes(media, max_width: int = 768, quality: int = 70,
+                       blur_faces: bool = True, quiet: bool = False,
+                       method: str = DEFAULT_METHOD, runtime: str = DEFAULT_RUNTIME,
+                       style: str = DEFAULT_STYLE) -> bytes | None:
+    """Grab one camera frame and return encoded JPEG bytes.
 
-    With `blur`, faces found by `method` on `runtime` are obscured in `style`
-    before the frame is encoded. `quiet` rate-limits the failure logging (for callers that poll,
-    such as the settings page's live view, so a dead camera doesn't flood the
-    log at frame rate). Returns None if no frame or if OpenCV is unavailable.
+    With `blur_faces` (the default), faces found by `method` on `runtime` are
+    obscured in `style` before the frame is encoded. `quiet` rate-limits the
+    failure logging, for callers that poll (the settings page's live view) so
+    a dead camera does not flood the log at frame rate.
+    Returns None if no frame or if OpenCV is unavailable.
     """
     def warn(key: str, msg: str, *args) -> None:
         if not quiet or throttle("capture-" + key):
@@ -87,7 +88,7 @@ def capture_jpeg(media, max_width: int = 768, quality: int = 70,
 
     # get_frame() returns BGR, which is what OpenCV wants throughout.
     bgr = np.ascontiguousarray(frame)
-    if blur:
+    if blur_faces:
         # Fail closed: if we can't blur, we don't send the image at all.
         n = pixelate_faces_bgr(bgr, method, runtime, style)
         if n is None:
@@ -106,20 +107,22 @@ def capture_jpeg(media, max_width: int = 768, quality: int = 70,
 
 
 def capture_jpeg_data_uri(media, max_width: int = 768, quality: int = 70,
-                          blur: bool = True, method: str = DEFAULT_METHOD,
+                          blur_faces: bool = True, method: str = DEFAULT_METHOD,
                           runtime: str = DEFAULT_RUNTIME,
                           style: str = DEFAULT_STYLE) -> str | None:
     """Grab one camera frame and return a `data:image/jpeg;base64,...` URI.
 
-    With `blur` (the default), detected faces are obscured before the
+    Thin wrapper over `capture_jpeg_bytes` for sending to the Realtime model.
+    With `blur_faces` (the default), detected faces are obscured before the
     frame is encoded, so no unblurred image ever leaves the robot.
     Returns None if no frame or if OpenCV is unavailable.
     """
-    data = capture_jpeg(media, max_width=max_width, quality=quality, blur=blur,
-                        method=method, runtime=runtime, style=style)
-    if data is None:
+    raw = capture_jpeg_bytes(media, max_width=max_width, quality=quality,
+                             blur_faces=blur_faces, method=method,
+                             runtime=runtime, style=style)
+    if raw is None:
         return None
-    b64 = base64.b64encode(data).decode("ascii")
+    b64 = base64.b64encode(raw).decode("ascii")
     return f"data:image/jpeg;base64,{b64}"
 
 

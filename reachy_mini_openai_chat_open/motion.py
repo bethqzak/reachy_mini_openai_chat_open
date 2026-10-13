@@ -37,14 +37,15 @@ except Exception:  # allows import / syntax-check off-robot
     logger.warning("reachy_mini.utils.create_head_pose unavailable; "
                    "head pose control disabled")
 
-# The SDK's own neutral antenna angles (~10° apart to avoid shaking when
-# perfectly vertical). Fall back to the same literal if the import fails.
+# The SDK's own "neutral" — the pose wake_up() finishes at: head straight,
+# antennas ~10° apart (fully vertical antennas shake). Falls back to the
+# same numbers so rest() still works when the SDK moves the constants.
 try:
     from reachy_mini.reachy_mini import (  # type: ignore
-        INIT_ANTENNAS_JOINT_POSITIONS as _NEUTRAL_ANTENNAS,
-    )
+        INIT_ANTENNAS_JOINT_POSITIONS, INIT_HEAD_POSE)
 except Exception:
-    _NEUTRAL_ANTENNAS = [-0.1745, 0.1745]
+    INIT_HEAD_POSE = np.eye(4)
+    INIT_ANTENNAS_JOINT_POSITIONS = [-0.1745, 0.1745]
 
 
 # --------------------------------------------------------------------------- #
@@ -257,31 +258,29 @@ class MotionController(threading.Thread):
     def stop(self) -> None:
         self._stop_event.set()
 
-    def go_neutral(self, duration: float = 1.0) -> None:
-        """Glide the head, antennas and body back to the neutral (init) pose.
+    def rest(self, duration: float = 0.8, timeout: float = 2.0) -> None:
+        """Stop the motion loop and leave the robot at its neutral pose.
 
-        Call after :meth:`stop` has been issued and the loop has exited, so
-        the 50 Hz set_target stream is no longer fighting the move. Used on
-        shutdown so the robot is left upright and centred, not asleep.
+        Called on app shutdown. The loop is joined first so a late tick can't
+        fight the move, then one interpolated goto_target takes the head,
+        antennas and body back to the SDK's init pose — the app never puts
+        the robot to sleep. (When the daemon manages the app it reclaims the
+        robot itself after the process exits; that is the daemon's policy,
+        not something this app asks for.)
+
+        Blocks for about `duration` seconds. Never raises: a robot that has
+        already gone away just logs a warning.
         """
-        self._stop_event.set()
-        if self.is_alive():
-            self.join(timeout=1.0)
-        neutral = self._make_head(0.0, 0.0, 0.0, 0.0)
-        antennas = np.array(_NEUTRAL_ANTENNAS)
+        self.stop()
+        if self.is_alive() and threading.current_thread() is not self:
+            self.join(timeout=timeout)
         try:
-            self.mini.goto_target(head=neutral, antennas=antennas,
+            self.mini.goto_target(INIT_HEAD_POSE,
+                                  antennas=INIT_ANTENNAS_JOINT_POSITIONS,
                                   duration=duration, body_yaw=0.0)
+            logger.info("motion reset to neutral pose")
         except Exception as e:
-            logger.warning("goto_target to neutral failed (%s); "
-                           "falling back to set_target", e)
-            try:
-                kwargs = {"antennas": antennas, "body_yaw": 0.0}
-                if neutral is not None:
-                    kwargs["head"] = neutral
-                self.mini.set_target(**kwargs)
-            except Exception as e2:
-                logger.warning("could not reset to neutral pose: %s", e2)
+            logger.warning("could not reset to neutral pose: %s", e)
 
     # -- internals ---------------------------------------------------------
     def _active_gesture_offsets(self, now: float) -> dict:
@@ -328,7 +327,7 @@ class MotionController(threading.Thread):
             t = now - t0
 
             yaw = pitch = roll = zmm = body = 0.0
-            ant_l, ant_r = _NEUTRAL_ANTENNAS
+            ant_l, ant_r = INIT_ANTENNAS_JOINT_POSITIONS
 
             # 1) ambient breathing + antenna flicks
             if self.cfg.ambient_enabled:

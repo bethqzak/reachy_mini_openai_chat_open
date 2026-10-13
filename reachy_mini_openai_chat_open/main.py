@@ -155,16 +155,12 @@ class OpenAIChatApp(ReachyMiniApp):
                     time.sleep(0.1)
         finally:
             logger.info("shutting down ...")
-            motion.stop()
             speaker.stop()
             if face_tracker is not None:
                 face_tracker.stop()
-            # Leave the robot upright and centred (not asleep): wait for the
-            # motion loop to exit, then glide back to the neutral pose.
-            try:
-                motion.go_neutral(duration=1.0)
-            except Exception:
-                logger.exception("error while returning to neutral pose")
+            # Stops the motion loop and parks the robot at its neutral pose
+            # (never asleep) before the connection is released.
+            motion.rest()
             try:
                 media.stop_recording()
                 media.stop_playing()

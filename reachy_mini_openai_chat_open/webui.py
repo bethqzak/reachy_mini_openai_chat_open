@@ -39,8 +39,8 @@ def _app_version() -> str:
         return "dev"
 
 
-def _clamp_volume(value, lo: float = 0.0, hi: float = 2.0) -> float:
-    """Coerce a UI-supplied volume multiplier into a safe range.
+def _clamp_gain(value, lo: float = 0.0, hi: float = 2.0) -> float:
+    """Coerce a UI-supplied gain/volume multiplier into a safe range.
 
     Never trust the browser: anything out of range is pinned, and junk falls
     back to unity rather than silencing or deafening the robot.
@@ -110,7 +110,7 @@ def register_routes(app) -> None:
                 "connected": bool(app._runtime.get("connected", False)),
                 # Why the last connection attempt failed (e.g. "OpenAI
                 # rejected the API key (401)"); empty when none.
-                "error": app._runtime.get("last_error") or "",
+                "last_error": str(app._runtime.get("last_error") or ""),
                 # Never send the key itself to the browser — only a hint.
                 "key_set": bool(cfg.openai_api_key),
                 "key_hint": (cfg.openai_api_key[:7] + "…" + cfg.openai_api_key[-4:]
@@ -148,7 +148,7 @@ def register_routes(app) -> None:
             applied.append("half_duplex")
         speaker = getattr(app, "speaker", None)
         if "speaker_volume" in data and speaker is not None:
-            speaker.volume = _clamp_volume(data["speaker_volume"])
+            speaker.volume = _clamp_gain(data["speaker_volume"])
             applied.append("speaker_volume")
 
         # --- reconnect settings ---
@@ -234,8 +234,8 @@ def register_routes(app) -> None:
     def transcript(n: int = 25):
         return {"entries": app.transcript.entries(n)}
 
-    @sa.get("/api/camera.jpg")
-    def camera_frame():
+    @sa.get("/api/camera")
+    def camera():
         # One fresh frame for the page's live view, which polls this a few
         # times a second. Served unblurred: it never leaves the robot's own
         # network, unlike the frames sent to OpenAI. Small and low quality
@@ -243,9 +243,11 @@ def register_routes(app) -> None:
         media = getattr(app, "media", None)
         if media is None or not app.cfg.enable_camera:
             return JSONResponse({"error": "camera disabled"}, status_code=503)
-        from .vision import capture_jpeg
-        data = capture_jpeg(media, max_width=640, quality=60,
-                            blur=False, quiet=True)
-        if data is None:
+        from .vision import capture_jpeg_bytes
+        raw = capture_jpeg_bytes(media, max_width=640, quality=60,
+                                 blur_faces=False, quiet=True)
+        if raw is None:
             return JSONResponse({"error": "no frame"}, status_code=503)
-        return Response(content=data, media_type="image/jpeg")
+        # no-store: every poll must fetch a live frame, not a cached one.
+        return Response(content=raw, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store"})

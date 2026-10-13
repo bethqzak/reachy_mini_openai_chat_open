@@ -128,7 +128,7 @@ async function loadState() {
     keyEl.placeholder = st.key_set ? "••••••••••••••••••••" : "sk-…";
   }
 
-  setStatus(st.connected, st.key_set, st.error);
+  setStatus(st.connected, st.key_set, st.last_error);
 }
 
 function setToggle(id, val) {
@@ -301,7 +301,7 @@ async function loadTranscript() {
 }
 
 // ---- live camera view ----
-// Polls /api/camera.jpg one frame at a time: the next request only goes out
+// Polls /api/camera one frame at a time: the next request only goes out
 // once the previous one has landed, so a slow robot or link never has frames
 // piling up behind each other. Stops while the tab is hidden or paused.
 const CAM_FRAME_MS = 150;   // ~6 fps target; the robot sets the real ceiling
@@ -327,7 +327,7 @@ function camFetch() {
   if (!camActive() || camInFlight) return;
   camInFlight = true;
   const img = $("cam");
-  img.src = "/api/camera.jpg?t=" + Date.now();
+  img.src = "/api/camera?t=" + Date.now();
 }
 
 function camSchedule(ms) {

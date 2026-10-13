@@ -136,7 +136,7 @@ def dispatch(name: str, args: dict, ctx: ToolContext) -> tuple[str, str | None]:
             return ('{"ok": false, "error": "camera disabled"}', None)
         cfg = ctx.config
         uri = capture_jpeg_data_uri(
-            ctx.media, blur=getattr(cfg, "blur_faces", True),
+            ctx.media, blur_faces=getattr(cfg, "blur_faces", True),
             method=cfg.face_method, runtime=cfg.face_runtime,
             style=cfg.blur_style)
         if uri is None:

@@ -275,8 +275,12 @@ class Config:
             instructions=os.environ.get("REACHY_INSTRUCTIONS", DEFAULT_INSTRUCTIONS),
             greeting=os.environ.get("REACHY_GREETING", DEFAULT_GREETING),
             greet_on_start=_bool("REACHY_GREET_ON_START", True),
+            # REACHY_TRANSCRIPTION_MODEL is the older spelling (the private
+            # edition's); still honoured for one release.
             transcription_model=os.environ.get(
-                "OPENAI_TRANSCRIPTION_MODEL", DEFAULT_TRANSCRIPTION_MODEL).strip(),
+                "OPENAI_TRANSCRIPTION_MODEL",
+                os.environ.get("REACHY_TRANSCRIPTION_MODEL",
+                               DEFAULT_TRANSCRIPTION_MODEL)).strip(),
             transcription_language=os.environ.get("REACHY_LANGUAGE", "en"),
             turn_detection=_choice("REACHY_TURN_DETECTION", "semantic_vad",
                                    TURN_DETECTION),
