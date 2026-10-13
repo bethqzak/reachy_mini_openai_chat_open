@@ -322,6 +322,7 @@ class MotionController(threading.Thread):
     def run(self) -> None:
         t0 = time.monotonic()
         dt = 0.02  # 50 Hz
+        next_tick = t0
         while not self._stop_event.is_set():
             now = time.monotonic()
             t = now - t0
@@ -390,5 +391,11 @@ class MotionController(threading.Thread):
                     logger.warning("set_target failed (+%d suppressed): %s",
                                    throttle_skipped("set-target"), e)
 
-            time.sleep(dt)
+            # Sleep to the next deadline rather than a flat dt, so the tick
+            # cost doesn't silently push the real rate below 50 Hz (and a
+            # slow tick doesn't compound into drift).
+            next_tick += dt
+            time.sleep(max(0.0, next_tick - time.monotonic()))
+            if time.monotonic() - next_tick > 1.0:
+                next_tick = time.monotonic()  # fell far behind; don't burst
         logger.debug("motion loop stopped.")

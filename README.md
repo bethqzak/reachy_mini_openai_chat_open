@@ -55,7 +55,7 @@ You pay OpenAI directly for usage. Apache-2.0 licensed.
 - Python 3.11+ (`reachy-mini` 1.9 and later require it; 3.10 works only with `reachy-mini` 1.8.4).
 
 Daemon 1.8.4 through 1.11 are supported (last verified against `reachy-mini`
-1.11.0, released 11 Sept 2026). Intel Macs top out
+1.11.0, released 21 Sept 2026). Intel Macs top out
 at 1.8.4 because `reachy-mini` 1.9 and later hard-require `onnxruntime==1.27.0`,
 which has no x86_64 macOS wheels; this app sets no upper bound, so pip resolves
 1.8.4 there and the SDK calls it makes are identical. Daemon 1.11 dropped
@@ -185,7 +185,7 @@ All settings are environment variables (see `.env.example`):
 | `REACHY_TURN_DETECTION` | `semantic_vad` | How the end of your turn is detected: `semantic_vad` (waits for a finished thought) or `server_vad` (600 ms of silence) |
 | `REACHY_VAD_EAGERNESS` | `auto` | `semantic_vad` only: `low` waits longest before replying, `high` replies soonest |
 | `REACHY_NOISE_REDUCTION` | `far_field` | Noise reduction on the mic: `far_field`, `near_field` or `off` |
-| `REACHY_NAME_SOUNDALIKES` | `Ritchie, Richie, Ricky, Reechy, Peachy, Reach` | Mishearings of "Reachy": written as Reachy in the transcript and understood as the robot's name. Empty turns it off |
+| `REACHY_NAME_SOUNDALIKES` | `Ritchie, Richie, Ricky, Reechy, Peachy, Reach` | Mishearings of "Reachy": the model is told they mean the robot's name (the transcript shows what was heard). Empty turns it off |
 | `REACHY_INSTRUCTIONS` | built-in | System prompt / personality (overridden by a value saved on the settings page) |
 | `REACHY_GREETING` | built-in | Spoken word for word on start, with the mic held shut until it finishes (same override) |
 | `REACHY_GREET_ON_START` | `true` | Greet when the app launches |

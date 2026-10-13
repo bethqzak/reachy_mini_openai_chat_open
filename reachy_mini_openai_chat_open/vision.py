@@ -137,7 +137,9 @@ class FaceTracker(threading.Thread):
         self.media = media
         self.period = 1.0 / rate_hz
         self.method, self.runtime = method, runtime
-        self._stop = threading.Event()
+        # Not `_stop`: that shadows threading.Thread._stop(), which join()
+        # and is_alive() call internally.
+        self._stop_event = threading.Event()
         self.enabled = False
 
         self._lock = threading.Lock()
@@ -166,11 +168,11 @@ class FaceTracker(threading.Thread):
             return self._offset[0], self._offset[1], fresh
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
 
     def run(self) -> None:
         """Poll the camera at `rate_hz` while enabled."""
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             # The detector can be swapped from the settings page, so being
             # unavailable now is a reason to idle, not to exit.
             if not self.enabled or not self.available:

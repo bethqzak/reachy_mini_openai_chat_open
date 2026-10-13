@@ -157,7 +157,9 @@ class SpeakerPlayer(threading.Thread):
         # host stutters; too large and that much audio survives a barge-in.
         self.lead_s = max(0.05, float(lead_s))
         self._q: "queue.Queue[tuple[int, str | None, np.ndarray] | None]" = queue.Queue()
-        self._stop = threading.Event()
+        # Not `_stop`: that shadows threading.Thread._stop(), which join()
+        # and is_alive() call internally.
+        self._stop_event = threading.Event()
         self._energy = 0.0
         self._energy_lock = threading.Lock()
         self._playing = threading.Event()
@@ -237,7 +239,7 @@ class SpeakerPlayer(threading.Thread):
         return item, heard
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
         self._q.put(None)
 
     # -- consumers -----------------------------------------------------------
@@ -264,7 +266,7 @@ class SpeakerPlayer(threading.Thread):
 
     # -- thread body -------------------------------------------------------
     def run(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             try:
                 entry = self._q.get(timeout=0.05)
             except queue.Empty:
