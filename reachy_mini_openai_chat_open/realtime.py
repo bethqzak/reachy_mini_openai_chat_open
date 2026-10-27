@@ -396,12 +396,12 @@ class OpenAIRealtimeClient:
             # it said matches what the person heard.
             logger.debug("user speech detected%s",
                          " (interrupting response)" if self._response_active else "")
+            # No response.cancel from here: the server cancels the reply
+            # itself (interrupt_response in _turn_detection) before it tells
+            # us speech started, and a second cancel is refused with
+            # `response_cancel_not_active`. We only cut the speaker and
+            # truncate the item to what was heard.
             item_id, heard_ms = self.speaker.clear()
-            if self._response_active:
-                try:
-                    await self._send({"type": "response.cancel"})
-                except Exception as e:
-                    logger.debug("response.cancel failed: %s", e)
             await self._truncate_item(item_id, heard_ms)
             return
 
@@ -460,6 +460,11 @@ class OpenAIRealtimeClient:
 
         if etype == "error":
             err = data.get("error", data) or {}
+            if err.get("code") == "response_cancel_not_active":
+                # Benign race: the reply ended between our check and our
+                # cancel. Nothing to show the user.
+                logger.debug("response.cancel: no active response (already ended)")
+                return
             logger.error("API error: %s", json.dumps(err))
             if not self.runtime.get("connected"):
                 # Rejected before the session was accepted — keep the reason
